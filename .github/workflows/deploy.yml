@@ -106,8 +106,22 @@ jobs:
           
           # 使用grep和sed解析文本格式输出
           # 格式通常是: "ID: {id}, Title: {title}, Supports Preview: {boolean}"
-          KV_ID=$(echo "$KV_LIST" | grep -i "title:.*cache" | sed -E 's/.*ID: ([0-9a-f-]+),.*/\1/' | head -n 1)
+          KV_ID=$(echo "$KV_LIST" | grep -i "title:.*CACHE" | sed -E 's/.*ID: ([0-9a-f-]+),.*/\1/' | head -n 1)
           echo "KV Namespace ID: $KV_ID"
+          
+          # 如果第一种方法失败，使用JSON格式获取
+          if [ -z "$KV_ID" ]; then
+            echo "First method failed, trying JSON format..."
+            KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title | ascii_downcase == "cache") | .id')
+            echo "KV Namespace ID (JSON method): $KV_ID"
+          fi
+          
+          # 如果仍然失败，尝试获取第一个KV命名空间
+          if [ -z "$KV_ID" ]; then
+            echo "Both methods failed, trying to get first KV namespace..."
+            KV_ID=$(echo "$KV_LIST" | head -n 1 | sed -E 's/.*ID: ([0-9a-f-]+),.*/\1/')
+            echo "KV Namespace ID (fallback): $KV_ID"
+          fi
           
           # 更新wrangler.toml
           if [ ! -z "$D1_ID" ]; then
