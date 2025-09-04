@@ -95,19 +95,19 @@ jobs:
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           echo "D1 Database ID: $D1_ID"
           
-          # 列出所有KV命名空间以确认正确的标题
+          # 列出所有KV命名空间（使用文本格式，不使用--json）
           echo "Listing all KV namespaces:"
-          npx wrangler kv:namespace list --json
+          npx wrangler kv:namespace list
           
-          # 获取KV命名空间ID（使用--json参数）
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          # 使用文本解析方式获取KV命名空间ID
+          # 先获取所有命名空间列表
+          KV_LIST=$(npx wrangler kv:namespace list)
+          echo "KV List: $KV_LIST"
+          
+          # 使用grep和sed解析文本格式输出
+          # 格式通常是: "ID: {id}, Title: {title}, Supports Preview: {boolean}"
+          KV_ID=$(echo "$KV_LIST" | grep -i "title:.*cache" | sed -E 's/.*ID: ([0-9a-f-]+),.*/\1/' | head -n 1)
           echo "KV Namespace ID: $KV_ID"
-          
-          # 如果未找到，尝试使用其他可能的标题格式
-          if [ -z "$KV_ID" ]; then
-            KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title | contains("CACHE")) | .id')
-            echo "Trying alternative KV title match: $KV_ID"
-          fi
           
           # 更新wrangler.toml
           if [ ! -z "$D1_ID" ]; then
