@@ -102,22 +102,65 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 环境变量会自动传递给Worker
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          FROM_NAME: ${{ secrets.FROM_NAME }}
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
+          ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
 
   deploy-frontend-pages:
     runs-on: ubuntu-latest
     name: Deploy Frontend Pages
-    needs: deploy-backend-worker # 依赖后端部署成功
+    needs: deploy-backend-worker
+    
+    # 关键：设置此 Job 的默认工作目录为 frontend
+    defaults:
+      run:
+        working-directory: ./frontend
+
     steps:
+      # 步骤 1: 检出代码 (在仓库根目录)
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 步骤 2: 安装 pnpm
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8 # 或你需要的版本
+
+      # 步骤 3: 安装 Node.js 并缓存 pnpm 依赖
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+          # 关键：告诉缓存步骤 pnpm 的 lockfile 在 frontend 目录里
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      # 步骤 4: 安装依赖 (由于设置了 working-directory, 会自动在 frontend 目录运行)
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 步骤 5: 构建项目 (同样在 frontend 目录运行)
+      - name: Build Project
+        run: pnpm run build
+
+      # 步骤 6: 发布到 Cloudflare Pages
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: sm-auth-survey-frontend # 您可以自定义项目名称
-          directory: frontend # 指定 frontend 目录
+          projectName: sm-auth-survey-frontend
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          # 如果您的前端项目需要构建步骤，请取消下面的注释并修改命令
-          # buildCommand: "npm install && npm run build"
+          # 关键：directory 指向构建产物目录，相对于仓库根目录
+          directory: frontend/dist
+
