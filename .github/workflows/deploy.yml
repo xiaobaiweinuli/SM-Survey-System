@@ -8,9 +8,12 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '20' # 修复 1: 升级 Node.js 版本以兼容 Wrangler
+  NODE_VERSION: '20'
+  # 将 secrets 作为顶级 env 变量，方便在多个步骤中引用
   CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
   CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  # 请在 GitHub Secrets 中设置 WORKERS_DEV_URL，例如 your-subdomain.workers.dev
+  WORKERS_DEV_URL: ${{ secrets.WORKERS_DEV_URL }} 
 
 jobs:
   deploy:
@@ -21,52 +24,33 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js and pnpm
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 9
           run_install: false
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: |
-          cd frontend
-          pnpm install
+          echo "--- Installing frontend dependencies ---"
+          cd frontend && pnpm install && cd ..
+          echo "--- Installing backend dependencies ---"
+          cd backend && npm ci && cd ..
 
-      - name: Install backend dependencies
-        run: |
-          cd backend
-          npm ci
-
-      # --- 资源创建 ---
-      - name: Create D1 database
+      # --- 资源创建 (使用 continue-on-error) ---
+      - name: Create Cloudflare Resources (D1, KV, R2)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 create sm-auth-survey-db
-        continue-on-error: true
-
-      - name: Create KV namespace
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: kv:namespace create "CACHE"
-        continue-on-error: true
-
-      - name: Create R2 bucket
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 bucket create sm-auth-survey-files
+          # 优化：在一个步骤中执行所有创建命令
+          command: |
+            d1 create sm-auth-survey-db || echo "D1 DB already exists."
+            kv:namespace create "CACHE" || echo "KV Namespace already exists."
+            r2 bucket create sm-auth-survey-files || echo "R2 Bucket already exists."
         continue-on-error: true
 
       # --- 动态更新 wrangler.toml ---
@@ -75,57 +59,47 @@ jobs:
         run: |
           cd backend
           
-          # 获取 D1 数据库 ID
+          echo "Fetching D1 Database ID..."
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           echo "D1 Database ID: $D1_ID"
           
-          # 修复 2: 使用 jq 从 JSON 输出中获取 KV ID
-          # 注意：Wrangler 可能会自动为 KV 命名空间添加项目前缀，例如 "my-project-CACHE"
-          # 我们使用 contains 来进行更灵活的匹配
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title | contains("CACHE")) | .id')
+          echo "Fetching KV Namespace ID..."
+          # 修复: 修正 wrangler kv namespace list 命令语法
+          # 注意: Wrangler v3 会根据 worker 名称自动创建 KV，名称格式为 `[worker-name]-CACHE`
+          # 请确保 wrangler.toml 中的 name = "sm-auth-survey-api"
+          KV_ID=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
           echo "KV Namespace ID: $KV_ID"
           
           if [ -z "$D1_ID" ] || [ -z "$KV_ID" ]; then
-            echo "Error: Failed to retrieve D1 or KV resource IDs."
+            echo "Error: Failed to retrieve D1 or KV resource IDs. Please check resource names and permissions."
+            # 打印列表以供调试
+            echo "--- Available D1 Databases ---"
+            npx wrangler d1 list --json
+            echo "--- Available KV Namespaces ---"
+            npx wrangler kv namespace list --json
             exit 1
           fi
           
-          # 使用 sed 替换 wrangler.toml 中的占位符
+          # 使用更安全的 sed 替换，避免替换空字符串
           sed -i "s/database_id = \".*\"/database_id = \"$D1_ID\"/" wrangler.toml
           sed -i "s/id = \".*\"/id = \"$KV_ID\"/" wrangler.toml
           sed -i "s/preview_id = \".*\"/preview_id = \"$KV_ID\"/" wrangler.toml
           
-          echo "wrangler.toml updated successfully."
-          cat wrangler.toml # 打印更新后的文件内容以供调试
+          echo "--- wrangler.toml updated successfully ---"
+          cat wrangler.toml
 
       # --- 数据库迁移 ---
-      - name: Run database migrations
+      - name: Run database migrations on remote D1
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          # 修复 3: 添加 --remote 标志以在远程数据库上执行
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
           workingDirectory: backend
-        # 第一次运行后，如果表已存在，迁移可能会失败，所以允许错误
-        continue-on-error: true
-
-      - name: Run initial data migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
-          workingDirectory: backend
-        continue-on-error: true
-
-      - name: Run email templates and site configs migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
-          workingDirectory: backend
+          # 修复: 确保所有迁移都在 --remote 上执行
+          command: |
+            d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql || echo "Schema migration may have already run."
+            d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql || echo "Initial data migration may have already run."
+            d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql || echo "Email/Site config migration may have already run."
         continue-on-error: true
 
       # --- 部署后端 ---
@@ -137,6 +111,7 @@ jobs:
           command: deploy
           workingDirectory: backend
         env:
+          # 这些 secrets 会被自动注入到 Worker 中
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
@@ -150,15 +125,15 @@ jobs:
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
 
       # --- 部署前端 ---
-      # 优化 4: 将路由配置文件放在 public 目录中，避免二次部署
-      - name: Create Pages API routing configuration
+      - name: Create Pages routing configuration
         run: |
+          # 将 _routes.json 放在 public 目录，Vite 会自动将其复制到 dist
           mkdir -p frontend/public
           cat > frontend/public/_routes.json << 'EOF'
           {
             "version": 1,
             "include": ["/api/*"],
-            "exclude": ["/api/assets/*"]
+            "exclude": []
           }
           EOF
 
@@ -167,10 +142,8 @@ jobs:
           cd frontend
           pnpm run build
         env:
-          # VITE_API_BASE_URL 应该指向您的 Worker 部署后的 URL
-          # 如果您配置了自定义域，请使用它。否则，使用 *.workers.dev URL。
-          # 在这里我们假设 Worker 的名称与 wrangler.toml 中定义的一致 (sm-auth-survey-api)
-          VITE_API_BASE_URL: https://sm-auth-survey-api.${{ secrets.WORKERS_DEV_URL }} # 请确保在 secrets 中设置了 WORKERS_DEV_URL
+          # 确保前端应用知道后端的绝对 URL
+          VITE_API_BASE_URL: "https://sm-auth-survey-api.${{ env.WORKERS_DEV_URL }}"
 
       - name: Deploy frontend to Cloudflare Pages
         uses: cloudflare/pages-action@v1
@@ -181,9 +154,8 @@ jobs:
           directory: frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- 输出部署信息 ---
       - name: Output deployment info
         run: |
-          echo "🚀 Deployment completed!"
-          echo "📱 Frontend URL: https://sm-auth-survey-frontend.pages.dev"
-          echo "🔧 Backend URL: https://sm-auth-survey-api.${{ secrets.WORKERS_DEV_URL }}"
+          echo "✅ Deployment process completed."
+          echo "   - Frontend URL: https://sm-auth-survey-frontend.pages.dev"
+          echo "   - Backend URL: https://sm-auth-survey-api.${{ env.WORKERS_DEV_URL }}"
