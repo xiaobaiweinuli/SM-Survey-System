@@ -88,13 +88,26 @@ jobs:
       - name: Update wrangler.toml with actual IDs
         run: |
           cd backend
-          # 获取D1数据库ID
+          # 修复wrangler.toml中的cors配置
+          sed -i '/\[cors\]/,/headers = \["*"\]/d' wrangler.toml
+          
+          # 获取D1数据库ID（wrangler 3.x使用--json参数，字段为uuid）
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           echo "D1 Database ID: $D1_ID"
           
-          # 获取KV命名空间ID
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
+          # 列出所有KV命名空间以确认正确的标题
+          echo "Listing all KV namespaces:"
+          npx wrangler kv:namespace list --json
+          
+          # 获取KV命名空间ID（使用--json参数）
+          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
           echo "KV Namespace ID: $KV_ID"
+          
+          # 如果未找到，尝试使用其他可能的标题格式
+          if [ -z "$KV_ID" ]; then
+            KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title | contains("CACHE")) | .id')
+            echo "Trying alternative KV title match: $KV_ID"
+          fi
           
           # 更新wrangler.toml
           if [ ! -z "$D1_ID" ]; then
