@@ -17,20 +17,18 @@ jobs:
     name: Build and Deploy Integrated App
     steps:
       # ==================================================================
-      # 步骤 1: 检出代码和安装工具
+      # 步骤 1: 检出代码和安装全局工具
       # ==================================================================
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Wrangler & pnpm
-        run: |
-          npm install -g wrangler
-          npm install -g pnpm@8
+      - name: Install Wrangler
+        run: npm install -g wrangler
 
       # ==================================================================
-      # 步骤 2: 自动化创建和绑定 D1, R2, KV 资源 (合并后的关键步骤)
+      # 步骤 2: 自动化创建 Cloudflare 资源
       # ==================================================================
-      - name: Create and Bind Cloudflare Resources
+      - name: Create Cloudflare Resources
         run: |
           # D1 数据库
           DB_NAME="sm-auth-survey-db"
@@ -67,9 +65,15 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # ==================================================================
-      # 步骤 3: 构建前端应用
+      # 步骤 3: 设置构建环境并构建前端
       # ==================================================================
-      - name: Setup Node.js for Frontend Build
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # 关键：确保这里的版本号与你本地 pnpm 的主版本号一致
+          version: 9 # 假设你本地用的是 v9.x
+
+      - name: Setup Node.js and Cache
         uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -84,7 +88,6 @@ jobs:
         run: pnpm run build
         working-directory: ./frontend
         env:
-          # 关键：告诉前端构建，API 的基础路径是 /api
           VITE_API_BASE_URL: /api
 
       # ==================================================================
@@ -96,9 +99,7 @@ jobs:
           cp -r frontend/dist/* publish/
           mkdir -p publish/functions
           cp -r backend/src/* publish/functions/
-          # 关键！创建 catch-all 路由文件
           mv publish/functions/index.js publish/functions/[[path]].js
-          # (可选但推荐) 创建 _routes.json 来优化路由
           echo '{"version": 1, "include": ["/api/*"], "exclude": []}' > publish/functions/_routes.json
           echo "--- Assembled Directory Structure ---"
           ls -R publish
@@ -112,10 +113,10 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           projectName: sm-auth-survey-frontend
-          directory: ./publish # 部署我们组装好的 "publish" 目录
+          directory: ./publish
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
         env:
-          # 将所有密钥传递给 Pages Functions
+          # 将所有密钥和绑定传递给 Pages Functions
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
@@ -127,8 +128,6 @@ jobs:
           ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
           ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
-          # 关键：将 D1/R2/KV 的绑定信息作为环境变量传递
-          # Pages Functions 会自动识别这些特殊格式的变量并创建绑定
           DB: d1_binding:sm-auth-survey-db
           BUCKET: r2_binding:sm-auth-survey-files
           CACHE: kv_binding:sm-auth-survey-cache
