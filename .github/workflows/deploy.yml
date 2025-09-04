@@ -77,7 +77,7 @@ jobs:
 
       # 获取D1数据库ID并更新wrangler.toml
       - name: Get D1 database ID and update wrangler.toml
-        uses: cloudflare/wrangler-action@v4
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
