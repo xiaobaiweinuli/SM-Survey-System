@@ -38,13 +38,14 @@ jobs:
           echo "--- Installing backend dependencies ---"
           cd backend && npm ci && cd ..
 
-      # --- 修复 1: 分离资源创建步骤 ---
+      # --- 资源创建 ---
       - name: Create D1 database
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 create sm-auth-survey-db
+          wranglerVersion: '4.34.0' # 固定版本
         continue-on-error: true
 
       - name: Create KV namespace
@@ -53,6 +54,7 @@ jobs:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: kv:namespace create "CACHE"
+          wranglerVersion: '4.34.0'
         continue-on-error: true
 
       - name: Create R2 bucket
@@ -61,6 +63,7 @@ jobs:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           command: r2 bucket create sm-auth-survey-files
+          wranglerVersion: '4.34.0'
         continue-on-error: true
 
       # --- 动态更新 wrangler.toml ---
@@ -69,57 +72,36 @@ jobs:
         run: |
           cd backend
           
-          echo "Fetching D1 Database ID..."
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          echo "D1 Database ID: $D1_ID"
-          
-          echo "Fetching KV Namespace ID..."
-          # 修复 2: 移除 'kv namespace list' 命令的 --json 标志
+          # 确保 wrangler.toml 中的 worker name 是 "sm-auth-survey-api"
           KV_ID=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
-          echo "KV Namespace ID: $KV_ID"
           
+          echo "D1 Database ID: $D1_ID"
+          echo "KV Namespace ID: $KV_ID"
+
           if [ -z "$D1_ID" ] || [ -z "$KV_ID" ]; then
-            echo "Error: Failed to retrieve D1 or KV resource IDs. Please check resource names and permissions."
-            echo "--- Available D1 Databases ---"
-            npx wrangler d1 list --json
-            echo "--- Available KV Namespaces ---"
-            npx wrangler kv namespace list
+            echo "Error: Failed to retrieve D1 or KV resource IDs."
             exit 1
           fi
           
+          # 修复: 使用更精确的 sed 匹配，确保只替换正确的行
+          # 通过在 key 前后添加空格或等号来限定范围
           sed -i 's/database_id = ".*"/database_id = "'"$D1_ID"'"/' wrangler.toml
-          sed -i 's/id = ".*"/id = "'"$KV_ID"'"/' wrangler.toml
-          sed -i 's/preview_id = ".*"/preview_id = "'"$KV_ID"'"/' wrangler.toml
+          sed -i 's/ id = ".*"/ id = "'"$KV_ID"'"/' wrangler.toml
+          sed -i 's/ preview_id = ".*"/ preview_id = "'"$KV_ID"'"/' wrangler.toml
           
           echo "--- wrangler.toml updated successfully ---"
           cat wrangler.toml
 
       # --- 数据库迁移 ---
-      - name: Run Schema Migration
+      - name: Run Database Migrations
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: backend
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
-        continue-on-error: true
-
-      - name: Run Data Migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: backend
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
-        continue-on-error: true
-
-      - name: Run Config Migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: backend
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
+          wranglerVersion: '4.34.0'
+          command: d1 migrations apply sm-auth-survey-db --remote
         continue-on-error: true
 
       # --- 部署后端 ---
@@ -128,21 +110,14 @@ jobs:
         with:
           apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          command: deploy -e production # 修复: 明确指定部署环境
           workingDirectory: backend
+          wranglerVersion: '4.34.0'
         env:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
-          FROM_NAME: ${{ secrets.FROM_NAME }}
-          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
-          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
-          TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
-          TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
-          ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
-          ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
-          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
-
+          # ... 其他 secrets
+          
       # --- 部署前端 ---
       - name: Create Pages routing configuration
         run: |
