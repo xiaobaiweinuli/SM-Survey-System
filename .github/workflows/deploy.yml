@@ -8,6 +8,7 @@ on:
   workflow_dispatch:
 
 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -15,8 +16,7 @@ jobs:
     
     env:
       NODE_VERSION: '20'
-      # 指定一个确定的、最新的 Wrangler v4 版本以保证命令语法一致性
-      WRANGLER_VERSION: '4.34.0' 
+      WRANGLER_VERSION: '4.34.0'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -58,6 +58,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 list --json
           
+      # 1. [最终修复] 使用文本解析来获取 KV ID
       - name: Get KV Namespace ID
         id: get_kv_id
         uses: cloudflare/wrangler-action@v3
@@ -65,14 +66,16 @@ jobs:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # 使用 Wrangler v4 的正确语法
-          command: kv namespace list --json
+          # [语法修复] 不再使用 --json
+          command: kv namespace list
 
+      # 2. 解析 JSON 和文本，并更新 wrangler.toml
       - name: Update wrangler.toml with dynamic IDs
         working-directory: ./backend
         run: |
           echo "Parsing resource IDs..."
           D1_OUTPUT='${{ steps.get_d1_id.outputs.stdout }}'
+          # [解析修复] KV_OUTPUT 现在是纯文本
           KV_OUTPUT='${{ steps.get_kv_id.outputs.stdout }}'
 
           D1_ID=$(echo "$D1_OUTPUT" | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
@@ -81,7 +84,10 @@ jobs:
             exit 1
           fi
 
-          KV_ID=$(echo "$KV_OUTPUT" | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
+          # [解析修复] 使用 grep 和 awk 来解析纯文本
+          # 文本格式通常是：[ { id: "...", title: "..." }, ... ]
+          # 我们用 grep 找到包含正确 title 的行，然后用 awk 提取 id
+          KV_ID=$(echo "$KV_OUTPUT" | grep "sm-auth-survey-api-CACHE" | awk -F'id: ' '{print $2}' | awk -F',' '{print $1}' | tr -d '" ')
           if [ -z "$KV_ID" ]; then
             echo "::error::KV Namespace 'sm-auth-survey-api-CACHE' not found."
             exit 1
@@ -95,12 +101,12 @@ jobs:
           echo "wrangler.toml updated successfully."
           cat wrangler.toml
 
+      # 后续步骤保持不变
       - name: Apply Database Migrations
         uses: cloudflare/wrangler-action@v3
         with:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
           workingDirectory: ./backend
       
@@ -109,7 +115,6 @@ jobs:
         with:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
           workingDirectory: ./backend
 
@@ -118,7 +123,6 @@ jobs:
         with:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
           workingDirectory: ./backend
 
@@ -127,13 +131,14 @@ jobs:
         with:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
           workingDirectory: ./backend
 
       - name: Deploy Pages (Frontend)
         uses: cloudflare/pages-action@v1
         with:
-          projectName: 'sm-auth-survey-frontend' # 确保这是你正确的 Pages 项目名
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: 'sm-auth-survey-frontend'
           directory: ./frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
