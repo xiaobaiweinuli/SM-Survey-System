@@ -67,19 +67,19 @@ jobs:
         id: kv_namespace
         run: |
           KV_NAMESPACE_NAME="sm-auth-survey-cache"
-          # 检查 KV 命名空间是否存在
-          if ! wrangler kv:namespace list | grep -q "$KV_NAMESPACE_NAME"; then
+          # 检查 KV 命名空间是否存在 (修正: 使用 wrangler kv namespace list)
+          if ! wrangler kv namespace list | grep -q "$KV_NAMESPACE_NAME"; then
             echo "KV namespace '$KV_NAMESPACE_NAME' not found. Creating..."
-            # 创建 KV 命名空间并捕获输出
-            OUTPUT=$(wrangler kv:namespace create "$KV_NAMESPACE_NAME")
+            # 创建 KV 命名空间并捕获输出 (修正: 使用 wrangler kv namespace create)
+            OUTPUT=$(wrangler kv namespace create "$KV_NAMESPACE_NAME")
             echo "$OUTPUT"
             # 从输出中提取 ID
             KV_ID=$(echo "$OUTPUT" | grep -oP 'id = "\K[^"]+')
             echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
           else
             echo "KV namespace '$KV_NAMESPACE_NAME' already exists. Skipping creation."
-            # 获取已存在的 KV 命名空间 ID
-            KV_ID=$(wrangler kv:namespace list | grep "$KV_NAMESPACE_NAME" | awk '{print $4}')
+            # 获取已存在的 KV 命名空间 ID (修正: 使用 wrangler kv namespace list)
+            KV_ID=$(wrangler kv namespace list | grep "$KV_NAMESPACE_NAME" | awk '{print $4}')
             echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
           fi
         env:
@@ -98,7 +98,7 @@ jobs:
           cat backend/wrangler.toml
 
       - name: Deploy Worker
-        run: wrangler deploy backend/src/index.js --config backend/wrangler.toml --env production
+        run: wrangler deploy --config backend/wrangler.toml --env production
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
