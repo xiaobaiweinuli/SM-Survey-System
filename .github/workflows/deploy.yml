@@ -7,9 +7,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  NODE_VERSION: '20'
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -19,10 +16,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 20
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
@@ -42,12 +39,11 @@ jobs:
           cd backend
           npm ci
 
-      # 升级 Wrangler 到 4.x
-      - name: Upgrade Wrangler
+      - name: Upgrade Wrangler to 4.x
         run: npm install --save-dev wrangler@4
 
-      # 创建 D1 数据库（如果不存在）
-      - name: Create D1 database
+      # 确保 D1 数据库存在
+      - name: Ensure D1 database exists
         run: |
           cd backend
           EXIST=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
@@ -58,8 +54,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 创建 KV namespace（如果不存在）
-      - name: Create KV namespace
+      # 确保 KV namespace 存在
+      - name: Ensure KV namespace exists
         run: |
           cd backend
           EXIST=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
@@ -70,8 +66,8 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 创建 R2 bucket（如果不存在）
-      - name: Create R2 bucket
+      # 确保 R2 bucket 存在
+      - name: Ensure R2 bucket exists
         run: |
           cd backend
           EXIST=$(npx wrangler r2 bucket list --json | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
@@ -82,20 +78,20 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 获取实际 D1 和 KV ID 并更新 wrangler.toml
+      # 获取 D1 和 KV 实际 ID 并替换占位符
       - name: Update wrangler.toml with actual IDs
         run: |
           cd backend
-          # 获取 D1 数据库 ID
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          sed -i "s/database_id = \"your-database-id-will-be-auto-generated\"/database_id = \"$D1_ID\"/" wrangler.toml
-
-          # 获取 KV namespace ID
           KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
-          sed -i "s/id = \"your-kv-namespace-id\"/id = \"$KV_ID\"/" wrangler.toml
-          sed -i "s/preview_id = \"your-preview-kv-namespace-id\"/preview_id = \"$KV_ID\"/" wrangler.toml
 
-      # 运行数据库迁移
+          sed -i "s/PLACEHOLDER_D1_ID/$D1_ID/" wrangler.toml
+          sed -i "s/PLACEHOLDER_KV_ID/$KV_ID/" wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 执行 D1 数据库迁移
       - name: Run D1 migrations
         run: |
           cd backend
@@ -107,7 +103,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       # 部署后端 Worker
-      - name: Deploy backend to Cloudflare Workers
+      - name: Deploy backend Worker
         run: |
           cd backend
           npx wrangler deploy
@@ -134,7 +130,7 @@ jobs:
         env:
           VITE_API_BASE_URL: /api
 
-      # 部署前端到 Cloudflare Pages
+      # 部署前端到 Pages
       - name: Deploy frontend to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
