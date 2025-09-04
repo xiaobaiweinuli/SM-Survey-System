@@ -7,147 +7,117 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-env:
-  NODE_VERSION: '20'
-  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-  WORKERS_DEV_URL: ${{ secrets.WORKERS_DEV_URL }}
-
 jobs:
-  deploy:
+  deploy-backend-worker:
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare Workers and Pages
-    
+    name: Deploy Backend Worker
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js and pnpm
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-          run_install: false
+          node-version: '20'
 
-      - name: Install dependencies
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
+
+      - name: Check and Create D1 Database
+        id: d1_db
         run: |
-          echo "--- Installing frontend dependencies ---"
-          cd frontend && pnpm install && cd ..
-          echo "--- Installing backend dependencies ---"
-          cd backend && npm ci && cd ..
-
-      # --- 资源创建 ---
-      - name: Create D1 database
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 create sm-auth-survey-db
-          wranglerVersion: '4.34.0' # 固定版本
-        continue-on-error: true
-
-      - name: Create KV namespace
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: kv:namespace create "CACHE"
-          wranglerVersion: '4.34.0'
-        continue-on-error: true
-
-      - name: Create R2 bucket
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 bucket create sm-auth-survey-files
-          wranglerVersion: '4.34.0'
-        continue-on-error: true
-
-      # --- 动态更新 wrangler.toml ---
-      - name: Update wrangler.toml with actual resource IDs
-        id: update_toml
-        run: |
-          cd backend
-          
-          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          # 确保 wrangler.toml 中的 worker name 是 "sm-auth-survey-api"
-          KV_ID=$(npx wrangler kv namespace list | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
-          
-          echo "D1 Database ID: $D1_ID"
-          echo "KV Namespace ID: $KV_ID"
-
-          if [ -z "$D1_ID" ] || [ -z "$KV_ID" ]; then
-            echo "Error: Failed to retrieve D1 or KV resource IDs."
-            exit 1
+          DB_NAME="sm-auth-survey-db"
+          # 检查 D1 数据库是否存在
+          if ! wrangler d1 list | grep -q "$DB_NAME"; then
+            echo "D1 database '$DB_NAME' not found. Creating..."
+            # 创建 D1 数据库并捕获输出
+            OUTPUT=$(wrangler d1 create "$DB_NAME")
+            echo "$OUTPUT"
+            # 从输出中提取数据库 ID
+            DB_ID=$(echo "$OUTPUT" | grep -oP 'database_id = "\K[^"]+')
+            echo "database_id=$DB_ID" >> $GITHUB_OUTPUT
+            # 应用 schema 文件
+            wrangler d1 execute "$DB_NAME" --file=./database/schema.sql
+          else
+            echo "D1 database '$DB_NAME' already exists. Skipping creation."
+            # 获取已存在的数据库 ID
+            DB_ID=$(wrangler d1 list | grep "$DB_NAME" | awk '{print $2}')
+            echo "database_id=$DB_ID" >> $GITHUB_OUTPUT
           fi
-          
-          # 修复: 使用更精确的 sed 匹配，确保只替换正确的行
-          # 通过在 key 前后添加空格或等号来限定范围
-          sed -i 's/database_id = ".*"/database_id = "'"$D1_ID"'"/' wrangler.toml
-          sed -i 's/ id = ".*"/ id = "'"$KV_ID"'"/' wrangler.toml
-          sed -i 's/ preview_id = ".*"/ preview_id = "'"$KV_ID"'"/' wrangler.toml
-          
-          echo "--- wrangler.toml updated successfully ---"
-          cat wrangler.toml
-
-      # --- 数据库迁移 ---
-      - name: Run Database Migrations
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: backend
-          wranglerVersion: '4.34.0'
-          command: d1 migrations apply sm-auth-survey-db --remote
-        continue-on-error: true
-
-      # --- 部署后端 ---
-      - name: Deploy backend to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy -e production # 修复: 明确指定部署环境
-          workingDirectory: backend
-          wranglerVersion: '4.34.0'
         env:
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          # ... 其他 secrets
-          
-      # --- 部署前端 ---
-      - name: Create Pages routing configuration
-        run: |
-          mkdir -p frontend/public
-          cat > frontend/public/_routes.json << 'EOF'
-          {
-            "version": 1,
-            "include": ["/api/*"],
-            "exclude": []
-          }
-          EOF
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Build frontend
+      - name: Check and Create R2 Bucket
+        id: r2_bucket
         run: |
-          cd frontend
-          pnpm run build
+          BUCKET_NAME="sm-auth-survey-files"
+          # 检查 R2 存储桶是否存在
+          if ! wrangler r2 bucket list | grep -q "$BUCKET_NAME"; then
+            echo "R2 bucket '$BUCKET_NAME' not found. Creating..."
+            wrangler r2 bucket create "$BUCKET_NAME"
+          else
+            echo "R2 bucket '$BUCKET_NAME' already exists. Skipping creation."
+          fi
         env:
-          VITE_API_BASE_URL: "https://sm-auth-survey-api.${{ env.WORKERS_DEV_URL }}"
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Deploy frontend to Cloudflare Pages
+      - name: Check and Create KV Namespace
+        id: kv_namespace
+        run: |
+          KV_NAMESPACE_NAME="sm-auth-survey-cache"
+          # 检查 KV 命名空间是否存在
+          if ! wrangler kv:namespace list | grep -q "$KV_NAMESPACE_NAME"; then
+            echo "KV namespace '$KV_NAMESPACE_NAME' not found. Creating..."
+            # 创建 KV 命名空间并捕获输出
+            OUTPUT=$(wrangler kv:namespace create "$KV_NAMESPACE_NAME")
+            echo "$OUTPUT"
+            # 从输出中提取 ID
+            KV_ID=$(echo "$OUTPUT" | grep -oP 'id = "\K[^"]+')
+            echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+          else
+            echo "KV namespace '$KV_NAMESPACE_NAME' already exists. Skipping creation."
+            # 获取已存在的 KV 命名空间 ID
+            KV_ID=$(wrangler kv:namespace list | grep "$KV_NAMESPACE_NAME" | awk '{print $4}')
+            echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Update wrangler.toml
+        run: |
+          # 使用 sed 更新 wrangler.toml 文件
+          # 注意：-i.bak 是为了在 macOS 和 Linux 上都能工作
+          sed -i.bak "s/your-database-id-will-be-auto-generated/${{ steps.d1_db.outputs.database_id }}/" backend/wrangler.toml
+          sed -i.bak "s/your-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
+          # preview_id 通常可以留空或与主 ID 相同，除非有特定需求
+          sed -i.bak "s/your-preview-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
+          echo "wrangler.toml updated with new resource IDs."
+          cat backend/wrangler.toml
+
+      - name: Deploy Worker
+        run: wrangler deploy backend/src/index.js --config backend/wrangler.toml --env production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-frontend-pages:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend Pages
+    needs: deploy-backend-worker # 依赖后端部署成功
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: sm-auth-survey-frontend
-          directory: frontend/dist
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: sm-auth-survey-frontend # 您可以自定义项目名称
+          directory: frontend # 指定 frontend 目录
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Output deployment info
-        run: |
-          echo "✅ Deployment process completed."
-          echo "   - Frontend URL: https://sm-auth-survey-frontend.pages.dev"
-          echo "   - Backend URL: https://sm-auth-survey-api.${{ env.WORKERS_DEV_URL }}"
+          # 如果您的前端项目需要构建步骤，请取消下面的注释并修改命令
+          # buildCommand: "npm install && npm run build"
