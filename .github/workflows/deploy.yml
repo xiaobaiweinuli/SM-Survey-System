@@ -70,7 +70,7 @@ jobs:
         run: |
           KV_NAMESPACE_NAME="sm-auth-survey-cache"
           # 使用 jq 检查 KV 命名空间是否存在
-          EXISTING_KV=$(wrangler kv namespace list --json | jq -r --arg name "$KV_NAMESPACE_NAME" '.[] | select(.title == $name) | .id')
+          EXISTING_KV=$(wrangler kv namespace list | jq -r --arg name "$KV_NAMESPACE_NAME" '.[] | select(.title == $name) | .id')
 
           if [ -z "$EXISTING_KV" ]; then
             echo "KV namespace '$KV_NAMESPACE_NAME' not found. Creating..."
