@@ -47,87 +47,47 @@ jobs:
         run: npm install
         working-directory: ./backend
 
-      - name: Get D1 Database ID
-        id: get_d1_id
-        uses: cloudflare/wrangler-action@v3
-        with:
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 list --json
-          
-      - name: Get KV Namespace List (JSON)
-        id: get_kv_list
-        uses: cloudflare/wrangler-action@v3
-        with:
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: kv namespace list --json
-
-      # [最终修复] 通过 env 块将步骤输出注入到脚本中
-      - name: Update wrangler.toml with dynamic IDs
+      # [最终修复] 将所有动态配置和迁移操作合并到一个步骤中，绕开 wrangler-action 的 bug
+      - name: Configure and Migrate
         working-directory: ./backend
-        env:
-          D1_OUTPUT: ${{ steps.get_d1_id.outputs.stdout }}
-          KV_OUTPUT: ${{ steps.get_kv_list.outputs.stdout }}
         run: |
-          echo "Parsing resource IDs..."
-          
-          # 现在可以直接使用环境变量 $D1_OUTPUT 和 $KV_OUTPUT
-          D1_ID=$(echo "$D1_OUTPUT" | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          # 1. 在项目本地安装 wrangler，确保 npx 能精确找到它
+          echo "Installing Wrangler v${{ env.WRANGLER_VERSION }} locally..."
+          npm install wrangler@${{ env.WRANGLER_VERSION }}
+
+          # 2. 使用本地安装的 wrangler (通过 npx) 执行所有命令
+          echo "Fetching resource IDs..."
+          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          KV_ID=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
+
+          # 3. 验证并更新 wrangler.toml
           if [ -z "$D1_ID" ]; then
-            echo "::error::D1 Database 'sm-auth-survey-db' not found in output."
-            echo "D1 Output was: $D1_OUTPUT"
+            echo "::error::Could not find D1 Database 'sm-auth-survey-db'."
             exit 1
           fi
-
-          KV_ID=$(echo "$KV_OUTPUT" | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
           if [ -z "$KV_ID" ]; then
-            echo "::error::KV Namespace 'sm-auth-survey-api-CACHE' not found in output."
-            echo "KV Output was: $KV_OUTPUT"
+            echo "::error::Could not find KV Namespace 'sm-auth-survey-api-CACHE'."
             exit 1
           fi
-
-          echo "D1 ID Found: $D1_ID"
-          echo "KV ID Found: $KV_ID"
+          
+          echo "Found D1 ID: $D1_ID"
+          echo "Found KV ID: $KV_ID"
 
           echo "Updating wrangler.toml..."
-          sed -i "s/database_id = \".*\"/database_id = \"$D1_ID\"/" wrangler.toml
-          sed -i "s/id = \".*\"/id = \"$KV_ID\"/" wrangler.toml
-          sed -i "s/preview_id = \".*\"/preview_id = \"$KV_ID\"/" wrangler.toml
+          sed -i 's|database_id = ".*"|database_id = "'"$D1_ID"'"|' wrangler.toml
+          sed -i 's|id = ".*"|id = "'"$KV_ID"'"|' wrangler.toml
+          sed -i 's|preview_id = ".*"|preview_id = "'"$KV_ID"'"|' wrangler.toml
           
-          echo "wrangler.toml updated successfully."
+          echo "wrangler.toml updated successfully:"
           cat wrangler.toml
 
-      # 后续步骤保持不变
-      - name: Apply Database Migrations
-        uses: cloudflare/wrangler-action@v3
-        with:
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
-          workingDirectory: ./backend
-      
-      - name: Apply Initial Data
-        uses: cloudflare/wrangler-action@v3
-        with:
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
-          workingDirectory: ./backend
+          # 4. 执行数据库迁移
+          echo "Applying database migrations..."
+          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
+          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
+          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
 
-      - name: Apply Email Templates
-        uses: cloudflare/wrangler-action@v3
-        with:
-          wranglerVersion: ${{ env.WRANGLER_VERSION }}
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
-          workingDirectory: ./backend
-
+      # 部署步骤仍然使用官方 action，因为 deploy 命令是单子命令，没有 bug
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
