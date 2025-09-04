@@ -13,18 +13,18 @@ name = "sm-auth-survey-api-staging"
 name = "sm-auth-survey-api-dev"
 
 # D1 数据库配置（CI 自动填充 ID）
-[[d1_databases]]
+[[env.production.d1_databases]]
 binding = "DB"
 database_name = "sm-auth-survey-db"
 database_id = "your-database-id-will-be-auto-generated"
 
 # R2 存储配置
-[[r2_buckets]]
+[[env.production.r2_buckets]]
 binding = "BUCKET"
 bucket_name = "sm-auth-survey-files"
 
 # KV 存储配置（CI 自动填充 ID）
-[[kv_namespaces]]
+[[env.production.kv_namespaces]]
 binding = "CACHE"
 id = "your-kv-namespace-id"
 preview_id = "your-preview-kv-namespace-id"
