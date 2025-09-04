@@ -47,20 +47,28 @@ jobs:
         run: npm install
         working-directory: ./backend
 
+      # [最终修复] 将所有动态配置和迁移操作合并到一个步骤中
       - name: Configure and Migrate
         working-directory: ./backend
         run: |
+          # 1. 在项目本地安装 wrangler
           echo "Installing Wrangler v${{ env.WRANGLER_VERSION }} locally..."
           npm install wrangler@${{ env.WRANGLER_VERSION }}
 
-          echo "Fetching resource IDs..."
-          D1_JSON=$(npx wrangler d1 list --json)
-          KV_JSON=$(npx wrangler kv namespace list --json)
+          # 2. [关键修复] 定义 wrangler 的精确路径，放弃使用 npx
+          WRANGLER_PATH="./node_modules/.bin/wrangler"
 
+          # 3. 使用精确路径执行所有命令
+          echo "Fetching resource IDs..."
+          D1_JSON=$($WRANGLER_PATH d1 list --json)
+          KV_JSON=$($WRANGLER_PATH kv namespace list --json)
+
+          # 4. 统一使用 jq 解析所有输出
           echo "Parsing JSON..."
           D1_ID=$(echo "$D1_JSON" | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           KV_ID=$(echo "$KV_JSON" | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
 
+          # 5. 验证并更新 wrangler.toml
           if [ -z "$D1_ID" ] || [ -z "$KV_ID" ]; then
             echo "::error::Could not find required resource IDs."
             exit 1
@@ -70,19 +78,20 @@ jobs:
           echo "Found KV ID: $KV_ID"
 
           echo "Updating wrangler.toml..."
-          # [最终修复] 调整 sed 命令的顺序，避免错误覆盖
+          sed -i 's|database_id = ".*"|database_id = "'"$D1_ID"'"|' wrangler.toml
           sed -i 's|id = ".*"|id = "'"$KV_ID"'"|' wrangler.toml
           sed -i 's|preview_id = ".*"|preview_id = "'"$KV_ID"'"|' wrangler.toml
-          sed -i 's|database_id = ".*"|database_id = "'"$D1_ID"'"|' wrangler.toml
           
           echo "wrangler.toml updated successfully:"
           cat wrangler.toml
 
+          # 6. 使用精确路径执行数据库迁移
           echo "Applying database migrations..."
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
+          $WRANGLER_PATH d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
+          $WRANGLER_PATH d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
+          $WRANGLER_PATH d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
 
+      # 部署步骤使用官方 action，因为 deploy 命令是单子命令，没有已知问题
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
