@@ -1,4 +1,4 @@
-name: Deploy to Cloudflare
+name: Deploy to Cloudflare (Advanced Integrated & Automated)
 
 on:
   push:
@@ -6,103 +6,116 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+
 permissions:
-  contents: read      # 允许 checkout 代码 (必需)
-  deployments: write   # 允许 cloudflare/pages-action 创建部署状态 (解决 403 错误)
+  contents: read
+  deployments: write
+
 jobs:
-  deploy-backend-worker:
+  deploy-integrated-app:
     runs-on: ubuntu-latest
-    name: Deploy Backend Worker
+    name: Build and Deploy Integrated App
     steps:
-      - name: Checkout
+      # ==================================================================
+      # 步骤 1: 检出代码和安装工具
+      # ==================================================================
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Install Wrangler & pnpm
+        run: |
+          npm install -g wrangler
+          npm install -g pnpm@8
+
+      # ==================================================================
+      # 步骤 2: 自动化创建和绑定 D1, R2, KV 资源 (合并后的关键步骤)
+      # ==================================================================
+      - name: Create and Bind Cloudflare Resources
+        run: |
+          # D1 数据库
+          DB_NAME="sm-auth-survey-db"
+          echo "Checking for D1 Database: $DB_NAME"
+          if ! wrangler d1 list | grep -q "$DB_NAME"; then
+            echo "D1 Database not found. Creating and migrating..."
+            wrangler d1 create "$DB_NAME"
+            wrangler d1 execute "$DB_NAME" --file=./database/schema.sql
+          else
+            echo "D1 Database already exists."
+          fi
+          
+          # R2 存储桶
+          BUCKET_NAME="sm-auth-survey-files"
+          echo "Checking for R2 Bucket: $BUCKET_NAME"
+          if ! wrangler r2 bucket list | grep -q "$BUCKET_NAME"; then
+            echo "R2 Bucket not found. Creating..."
+            wrangler r2 bucket create "$BUCKET_NAME"
+          else
+            echo "R2 Bucket already exists."
+          fi
+
+          # KV 命名空间
+          KV_NAMESPACE="sm-auth-survey-cache"
+          echo "Checking for KV Namespace: $KV_NAMESPACE"
+          if ! wrangler kv namespace list | grep -q "$KV_NAMESPACE"; then
+            echo "KV Namespace not found. Creating..."
+            wrangler kv namespace create "$KV_NAMESPACE"
+          else
+            echo "KV Namespace already exists."
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # ==================================================================
+      # 步骤 3: 构建前端应用
+      # ==================================================================
+      - name: Setup Node.js for Frontend Build
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y jq
-          npm install -g wrangler
+      - name: Install Frontend Dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: ./frontend
 
-      - name: Check and Create D1 Database
-        id: d1_db
-        run: |
-          DB_NAME="sm-auth-survey-db"
-          # 检查 D1 数据库是否存在
-          if ! wrangler d1 list | grep -q "$DB_NAME"; then
-            echo "D1 database '$DB_NAME' not found. Creating..."
-            # 创建 D1 数据库并捕获输出
-            OUTPUT=$(wrangler d1 create "$DB_NAME")
-            echo "$OUTPUT"
-            # 从输出中提取数据库 ID
-            DB_ID=$(echo "$OUTPUT" | grep -oP 'database_id = "\K[^"]+')
-            echo "database_id=$DB_ID" >> $GITHUB_OUTPUT
-            # 应用 schema 文件
-            wrangler d1 execute "$DB_NAME" --file=./database/schema.sql
-          else
-            echo "D1 database '$DB_NAME' already exists. Skipping creation."
-            # 获取已存在的数据库 ID
-            DB_ID=$(wrangler d1 list | grep "$DB_NAME" | awk '{print $2}')
-            echo "database_id=$DB_ID" >> $GITHUB_OUTPUT
-          fi
+      - name: Build Frontend
+        run: pnpm run build
+        working-directory: ./frontend
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # 关键：告诉前端构建，API 的基础路径是 /api
+          VITE_API_BASE_URL: /api
 
-      - name: Check and Create R2 Bucket
-        id: r2_bucket
+      # ==================================================================
+      # 步骤 4: 组装最终的部署目录
+      # ==================================================================
+      - name: Assemble Final Deployment Directory
         run: |
-          BUCKET_NAME="sm-auth-survey-files"
-          # 检查 R2 存储桶是否存在
-          if ! wrangler r2 bucket list | grep -q "$BUCKET_NAME"; then
-            echo "R2 bucket '$BUCKET_NAME' not found. Creating..."
-            wrangler r2 bucket create "$BUCKET_NAME"
-          else
-            echo "R2 bucket '$BUCKET_NAME' already exists. Skipping creation."
-          fi
+          mkdir publish
+          cp -r frontend/dist/* publish/
+          mkdir -p publish/functions
+          cp -r backend/src/* publish/functions/
+          # 关键！创建 catch-all 路由文件
+          mv publish/functions/index.js publish/functions/[[path]].js
+          # (可选但推荐) 创建 _routes.json 来优化路由
+          echo '{"version": 1, "include": ["/api/*"], "exclude": []}' > publish/functions/_routes.json
+          echo "--- Assembled Directory Structure ---"
+          ls -R publish
+
+      # ==================================================================
+      # 步骤 5: 部署组装好的目录到 Cloudflare Pages
+      # ==================================================================
+      - name: Deploy Assembled App to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: sm-auth-survey-frontend
+          directory: ./publish # 部署我们组装好的 "publish" 目录
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Check and Create KV Namespace
-        id: kv_namespace
-        run: |
-          KV_NAMESPACE_NAME="sm-auth-survey-cache"
-          # 使用 jq 检查 KV 命名空间是否存在
-          EXISTING_KV=$(wrangler kv namespace list | jq -r --arg name "$KV_NAMESPACE_NAME" '.[] | select(.title == $name) | .id')
-
-          if [ -z "$EXISTING_KV" ]; then
-            echo "KV namespace '$KV_NAMESPACE_NAME' not found. Creating..."
-            # 使用 --json 标志创建并用 jq 解析
-            KV_ID=$(wrangler kv namespace create "$KV_NAMESPACE_NAME" --json | jq -r '.id')
-            echo "Created KV namespace with ID: $KV_ID"
-            echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
-          else
-            echo "KV namespace '$KV_NAMESPACE_NAME' already exists. Skipping creation."
-            echo "kv_id=$EXISTING_KV" >> $GITHUB_OUTPUT
-          fi
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-
-      - name: Update wrangler.toml
-        run: |
-          # 使用 sed 更新 wrangler.toml 文件
-          sed -i.bak "s/your-database-id-will-be-auto-generated/${{ steps.d1_db.outputs.database_id }}/" backend/wrangler.toml
-          sed -i.bak "s/your-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
-          sed -i.bak "s/your-preview-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
-          echo "wrangler.toml updated with new resource IDs."
-          cat backend/wrangler.toml
-
-      - name: Deploy Worker
-        run: wrangler deploy --config backend/wrangler.toml --env production
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # 环境变量会自动传递给Worker
+          # 将所有密钥传递给 Pages Functions
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
@@ -114,53 +127,8 @@ jobs:
           ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
           ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
-
-  deploy-frontend-pages:
-    runs-on: ubuntu-latest
-    name: Deploy Frontend Pages
-    needs: deploy-backend-worker
-    
-    # 关键：设置此 Job 的默认工作目录为 frontend
-    defaults:
-      run:
-        working-directory: ./frontend
-
-    steps:
-      # 步骤 1: 检出代码 (在仓库根目录)
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # 步骤 2: 安装 pnpm
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 8 # 或你需要的版本
-
-      # 步骤 3: 安装 Node.js 并缓存 pnpm 依赖
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-          # 关键：告诉缓存步骤 pnpm 的 lockfile 在 frontend 目录里
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      # 步骤 4: 安装依赖 (由于设置了 working-directory, 会自动在 frontend 目录运行)
-      - name: Install Dependencies
-        run: pnpm install --frozen-lockfile
-
-      # 步骤 5: 构建项目 (同样在 frontend 目录运行)
-      - name: Build Project
-        run: pnpm run build
-
-      # 步骤 6: 发布到 Cloudflare Pages
-      - name: Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: sm-auth-survey-frontend
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          # 关键：directory 指向构建产物目录，相对于仓库根目录
-          directory: frontend/dist
-
+          # 关键：将 D1/R2/KV 的绑定信息作为环境变量传递
+          # Pages Functions 会自动识别这些特殊格式的变量并创建绑定
+          DB: d1_binding:sm-auth-survey-db
+          BUCKET: r2_binding:sm-auth-survey-files
+          CACHE: kv_binding:sm-auth-survey-cache
