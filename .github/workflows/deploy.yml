@@ -11,7 +11,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy Cloudflare Backend and Frontend
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,7 +42,6 @@ jobs:
           cd backend
           npm ci
 
-      # ⚡ 安装 Wrangler v4
       - name: Install Wrangler v4
         run: npm install --save-dev wrangler@4
 
