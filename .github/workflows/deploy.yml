@@ -20,8 +20,10 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Wrangler CLI
-        run: npm install -g wrangler
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          npm install -g wrangler
 
       - name: Check and Create D1 Database
         id: d1_db
@@ -67,20 +69,18 @@ jobs:
         id: kv_namespace
         run: |
           KV_NAMESPACE_NAME="sm-auth-survey-cache"
-          # 检查 KV 命名空间是否存在 (修正: 使用 wrangler kv namespace list)
-          if ! wrangler kv namespace list | grep -q "$KV_NAMESPACE_NAME"; then
+          # 使用 jq 检查 KV 命名空间是否存在
+          EXISTING_KV=$(wrangler kv namespace list --json | jq -r --arg name "$KV_NAMESPACE_NAME" '.[] | select(.title == $name) | .id')
+
+          if [ -z "$EXISTING_KV" ]; then
             echo "KV namespace '$KV_NAMESPACE_NAME' not found. Creating..."
-            # 创建 KV 命名空间并捕获输出 (修正: 使用 wrangler kv namespace create)
-            OUTPUT=$(wrangler kv namespace create "$KV_NAMESPACE_NAME")
-            echo "$OUTPUT"
-            # 从输出中提取 ID
-            KV_ID=$(echo "$OUTPUT" | grep -oP 'id = "\K[^"]+')
+            # 使用 --json 标志创建并用 jq 解析
+            KV_ID=$(wrangler kv namespace create "$KV_NAMESPACE_NAME" --json | jq -r '.id')
+            echo "Created KV namespace with ID: $KV_ID"
             echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
           else
             echo "KV namespace '$KV_NAMESPACE_NAME' already exists. Skipping creation."
-            # 获取已存在的 KV 命名空间 ID (修正: 使用 wrangler kv namespace list)
-            KV_ID=$(wrangler kv namespace list | grep "$KV_NAMESPACE_NAME" | awk '{print $4}')
-            echo "kv_id=$KV_ID" >> $GITHUB_OUTPUT
+            echo "kv_id=$EXISTING_KV" >> $GITHUB_OUTPUT
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -89,10 +89,8 @@ jobs:
       - name: Update wrangler.toml
         run: |
           # 使用 sed 更新 wrangler.toml 文件
-          # 注意：-i.bak 是为了在 macOS 和 Linux 上都能工作
           sed -i.bak "s/your-database-id-will-be-auto-generated/${{ steps.d1_db.outputs.database_id }}/" backend/wrangler.toml
           sed -i.bak "s/your-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
-          # preview_id 通常可以留空或与主 ID 相同，除非有特定需求
           sed -i.bak "s/your-preview-kv-namespace-id/${{ steps.kv_namespace.outputs.kv_id }}/" backend/wrangler.toml
           echo "wrangler.toml updated with new resource IDs."
           cat backend/wrangler.toml
