@@ -13,7 +13,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    name: Deploy to Cloudflare Workers and Pages
+    name: Deploy Cloudflare Backend and Frontend
     
     steps:
       - name: Checkout code
@@ -24,17 +24,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-          cache-dependency-path: |
-            backend/package-lock.json
+          cache-dependency-path: backend/package-lock.json
 
-      # 安装 pnpm
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
           run_install: false
 
-      # 安装依赖
       - name: Install frontend dependencies
         run: |
           cd frontend
@@ -45,161 +42,78 @@ jobs:
           cd backend
           npm ci
 
-      # 创建D1数据库（如果不存在）
+      # 升级 Wrangler 到 4.x
+      - name: Upgrade Wrangler
+        run: npm install --save-dev wrangler@4
+
+      # 创建 D1 数据库（如果不存在）
       - name: Create D1 database
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 create sm-auth-survey-db
-          workingDirectory: backend
-        continue-on-error: true
-
-      # 创建KV命名空间（如果不存在）
-      - name: Create KV namespace
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: kv:namespace create "CACHE"
-          workingDirectory: backend
-        continue-on-error: true
-
-      # 创建R2存储桶（如果不存在）
-      - name: Create R2 bucket
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 bucket create sm-auth-survey-files
-          workingDirectory: backend
-        continue-on-error: true
-
-      # 获取D1数据库ID并更新wrangler.toml
-      - name: Get D1 database ID and update wrangler.toml
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 list --json
-          workingDirectory: backend
-        id: d1_list
-
-      - name: Update wrangler.toml with actual IDs
         run: |
           cd backend
-          # 修复wrangler.toml中的cors配置
-          sed -i '/\[cors\]/,/headers = \["*"\]/d' wrangler.toml
-          
-          # 获取D1数据库ID（wrangler 3.x使用--json参数，字段为uuid）
-          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          echo "D1 Database ID: $D1_ID"
-          
-          # 列出所有KV命名空间
-          echo "Listing all KV namespaces:"
-          npx wrangler kv:namespace list
-          
-          # 设置默认空值
-          KV_ID=""
-          
-          # 尝试使用--json参数和jq工具获取sm-auth-survey-api-CACHE命名空间ID
-          # 先检查wrangler命令是否支持--json参数
-          if npx wrangler kv:namespace list --json > /dev/null 2>&1; then
-            echo "Using jq to parse JSON output"
-            KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
-            echo "KV Namespace ID (sm-auth-survey-api-CACHE via jq): $KV_ID"
-          else
-            # 如果不支持--json参数，尝试使用标准输出
-            echo "--json parameter not supported, using standard output"
-            KV_LIST=$(npx wrangler kv:namespace list)
-            
-            # 尝试直接从KV_LIST中提取sm-auth-survey-api-CACHE命名空间ID
-            # 注意：这里使用更灵活的模式来匹配JSON格式
-            KV_ID=$(echo "$KV_LIST" | grep -oP '\{\s*"id":\s*"\K[0-9a-f-]+(?=",\s*"title":\s*"sm-auth-survey-api-CACHE")')
-            echo "KV Namespace ID (sm-auth-survey-api-CACHE via grep): $KV_ID"
-          fi
-          
-          # 如果没有找到特定的命名空间，查找任何包含CACHE的命名空间
-          if [ -z "$KV_ID" ]; then
-            echo "Trying to find any CACHE namespace..."
-            if npx wrangler kv:namespace list --json > /dev/null 2>&1; then
-              KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title | contains("CACHE")) | .id' | head -n 1)
-            else
-              KV_ID=$(echo "$KV_LIST" | grep -oP '\{\s*"id":\s*"\K[0-9a-f-]+(?=",\s*"title":\s*".*CACHE.*")' | head -n 1)
-            fi
-            echo "KV Namespace ID (any CACHE): $KV_ID"
-          fi
-          
-          # 如果仍然失败，尝试获取第一个KV命名空间
-          if [ -z "$KV_ID" ]; then
-            echo "Both methods failed, trying to get first KV namespace..."
-            if npx wrangler kv:namespace list --json > /dev/null 2>&1; then
-              KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[0].id')
-            else
-              KV_ID=$(echo "$KV_LIST" | grep -oP '\{\s*"id":\s*"\K[0-9a-f-]+' | head -n 1)
-            fi
-            echo "KV Namespace ID (fallback): $KV_ID"
-          fi
-          
-          # 最终保险措施：如果所有方法都失败，使用硬编码的默认值
-          if [ -z "$KV_ID" ]; then
-            echo "All methods failed, using hardcoded default value"
-            # 从日志中我们看到有一个sm-auth-survey-api-CACHE命名空间，使用它的ID
-            KV_ID="e49bfe2cf84b475d89cb82af3ba3afd7"
-            echo "KV Namespace ID (hardcoded default): $KV_ID"
-          fi
-          
-          # 更新wrangler.toml
-          if [ ! -z "$D1_ID" ]; then
-            sed -i "s/database_id = \"your-database-id-will-be-auto-generated\"/database_id = \"$D1_ID\"/" wrangler.toml
-          fi
-          
-          if [ ! -z "$KV_ID" ]; then
-            sed -i "s/id = \"your-kv-namespace-id\"/id = \"$KV_ID\"/" wrangler.toml
-            sed -i "s/preview_id = \"your-preview-kv-namespace-id\"/preview_id = \"$KV_ID\"/" wrangler.toml
+          EXIST=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          if [ -z "$EXIST" ]; then
+            npx wrangler d1 create sm-auth-survey-db
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 运行数据库迁移
-      - name: Run database migrations
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --file=./migrations/0001_initial_schema.sql
-          workingDirectory: backend
-        continue-on-error: true
-
-      - name: Run initial data migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --file=./migrations/0002_initial_data.sql
-          workingDirectory: backend
-        continue-on-error: true
-
-      - name: Run email templates and site configs migration
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 execute sm-auth-survey-db --file=./migrations/0003_email_templates_and_site_configs.sql
-          workingDirectory: backend
-        continue-on-error: true
-
-      # 部署后端到Cloudflare Workers
-      - name: Deploy backend to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
-          workingDirectory: backend
+      # 创建 KV namespace（如果不存在）
+      - name: Create KV namespace
+        run: |
+          cd backend
+          EXIST=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          if [ -z "$EXIST" ]; then
+            npx wrangler kv:namespace create "CACHE"
+          fi
         env:
-          # 环境变量会自动传递给Worker
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 创建 R2 bucket（如果不存在）
+      - name: Create R2 bucket
+        run: |
+          cd backend
+          EXIST=$(npx wrangler r2 bucket list --json | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
+          if [ -z "$EXIST" ]; then
+            npx wrangler r2 bucket create sm-auth-survey-files
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 获取实际 D1 和 KV ID 并更新 wrangler.toml
+      - name: Update wrangler.toml with actual IDs
+        run: |
+          cd backend
+          # 获取 D1 数据库 ID
+          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          sed -i "s/database_id = \"your-database-id-will-be-auto-generated\"/database_id = \"$D1_ID\"/" wrangler.toml
+
+          # 获取 KV namespace ID
+          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          sed -i "s/id = \"your-kv-namespace-id\"/id = \"$KV_ID\"/" wrangler.toml
+          sed -i "s/preview_id = \"your-preview-kv-namespace-id\"/preview_id = \"$KV_ID\"/" wrangler.toml
+
+      # 运行数据库迁移
+      - name: Run D1 migrations
+        run: |
+          cd backend
+          npx wrangler d1 execute sm-auth-survey-db --file=./migrations/0001_initial_schema.sql
+          npx wrangler d1 execute sm-auth-survey-db --file=./migrations/0002_initial_data.sql
+          npx wrangler d1 execute sm-auth-survey-db --file=./migrations/0003_email_templates_and_site_configs.sql
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 部署后端 Worker
+      - name: Deploy backend to Cloudflare Workers
+        run: |
+          cd backend
+          npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
@@ -212,16 +126,15 @@ jobs:
           ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
 
-      # 构建前端（使用内部API调用）
+      # 构建前端
       - name: Build frontend
         run: |
           cd frontend
           pnpm run build
         env:
-          # 使用Cloudflare内部调用，无需外部域名
           VITE_API_BASE_URL: /api
 
-      # 部署前端到Cloudflare Pages
+      # 部署前端到 Cloudflare Pages
       - name: Deploy frontend to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
@@ -231,41 +144,6 @@ jobs:
           directory: frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
 
-      # 配置Pages与Worker的内部路由
-      - name: Configure Pages routing to Worker
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages project create sm-auth-survey-frontend --compatibility-date=2024-09-05 --production-branch=main
-          workingDirectory: backend
-        continue-on-error: true
-
-      # 创建Pages的_routes.json文件以实现内部API调用
-      - name: Configure Pages API routing
-        run: |
-          cd frontend/dist
-          cat > _routes.json << 'EOF'
-          {
-            "version": 1,
-            "include": ["/*"],
-            "exclude": ["/api/*"]
-          }
-          EOF
-          
-          # 重新部署前端以包含路由配置
-          cd ../..
-
-      - name: Redeploy frontend with routing config
-        uses: cloudflare/pages-action@v1
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: sm-auth-survey-frontend
-          directory: frontend/dist
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-
-      # 输出部署信息
       - name: Output deployment info
         run: |
           echo "🚀 Deployment completed successfully!"
@@ -273,13 +151,3 @@ jobs:
           echo "🔧 Backend API: https://sm-auth-survey-api.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
           echo "💾 Database: sm-auth-survey-db"
           echo "📁 Storage: sm-auth-survey-files"
-          echo "🔗 Internal API calls configured for optimal performance"
-          echo ""
-          echo "✅ Features enabled:"
-          echo "  - Automatic D1, R2, KV creation and binding"
-          echo "  - Database migrations"
-          echo "  - Internal API routing"
-          echo "  - Resend email service"
-          echo "  - Site configuration management"
-          echo "  - Email template management"
-
