@@ -61,9 +61,9 @@ jobs:
       - name: Ensure KV namespace exists
         run: |
           cd backend
-          EXIST=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          EXIST=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
           if [ -z "$EXIST" ]; then
-            npx wrangler kv:namespace create "CACHE"
+            npx wrangler kv namespace create "CACHE"
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -86,7 +86,7 @@ jobs:
         run: |
           cd backend
           D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          KV_ID=$(npx wrangler kv namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
 
           sed -i "s/your-database-id-will-be-auto-generated/$D1_ID/" wrangler.toml
           sed -i "s/your-kv-namespace-id/$KV_ID/" wrangler.toml
