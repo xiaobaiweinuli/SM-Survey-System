@@ -7,6 +7,7 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -54,16 +55,9 @@ jobs:
           # 1. 在项目本地安装 wrangler
           echo "Installing Wrangler v${{ env.WRANGLER_VERSION }} locally..."
           npm install wrangler@${{ env.WRANGLER_VERSION }}
-          WRANGLER_PATH="./node_modules/.bin/wrangler"
 
-          # 2. [关键修复] 首先验证认证信息
-          echo "Verifying Cloudflare authentication..."
-          $WRANGLER_PATH whoami
-          if [ $? -ne 0 ]; then
-            echo "::error::Cloudflare authentication failed. Please check your CLOUDFLARE_API_TOKEN secret."
-            exit 1
-          fi
-          echo "Authentication successful."
+          # 2. [关键修复] 定义 wrangler 的精确路径，放弃使用 npx
+          WRANGLER_PATH="./node_modules/.bin/wrangler"
 
           # 3. 使用精确路径执行所有命令
           echo "Fetching resource IDs..."
@@ -98,7 +92,7 @@ jobs:
           $WRANGLER_PATH d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
           $WRANGLER_PATH d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
 
-      # 部署步骤
+      # 部署步骤使用官方 action，因为 deploy 命令是单子命令，没有已知问题
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
