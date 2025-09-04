@@ -16,10 +16,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install jq
+      - name: Install jq (needed for JSON parsing)
         run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: Setup Node.js 20 (Wrangler 3.x 需要 Node.js ≥ 20)
+      - name: Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -42,14 +42,14 @@ jobs:
           cd backend
           npm ci
 
-      - name: Install Wrangler 3.x
+      - name: Install Wrangler v3
         run: npm install --save-dev wrangler@3
 
-      # 确保 D1 数据库存在
+      # Ensure D1 database exists
       - name: Ensure D1 database exists
         run: |
           cd backend
-          EXIST=$(npx wrangler d1 list | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          EXIST=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           if [ -z "$EXIST" ]; then
             npx wrangler d1 create sm-auth-survey-db
           fi
@@ -57,11 +57,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 确保 KV namespace 存在
+      # Ensure KV namespace exists
       - name: Ensure KV namespace exists
         run: |
           cd backend
-          EXIST=$(npx wrangler kv:namespace list | jq -r '.[] | select(.title=="CACHE") | .id')
+          EXIST=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
           if [ -z "$EXIST" ]; then
             npx wrangler kv:namespace create "CACHE"
           fi
@@ -69,11 +69,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 确保 R2 bucket 存在
+      # Ensure R2 bucket exists
       - name: Ensure R2 bucket exists
         run: |
           cd backend
-          EXIST=$(npx wrangler r2 bucket list | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
+          EXIST=$(npx wrangler r2 bucket list --json | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
           if [ -z "$EXIST" ]; then
             npx wrangler r2 bucket create sm-auth-survey-files
           fi
@@ -81,12 +81,12 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 获取 D1 和 KV 实际 ID 并替换占位符
+      # Update wrangler.toml with actual IDs
       - name: Update wrangler.toml with actual IDs
         run: |
           cd backend
-          D1_ID=$(npx wrangler d1 list | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          KV_ID=$(npx wrangler kv:namespace list | jq -r '.[] | select(.title=="CACHE") | .id')
+          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
 
           sed -i "s/your-database-id-will-be-auto-generated/$D1_ID/" wrangler.toml
           sed -i "s/your-kv-namespace-id/$KV_ID/" wrangler.toml
@@ -95,7 +95,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 执行 D1 数据库迁移
+      # Run D1 migrations
       - name: Run D1 migrations
         run: |
           cd backend
@@ -106,7 +106,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      # 部署后端 Worker
+      # Deploy backend Worker
       - name: Deploy backend Worker
         run: |
           cd backend
@@ -126,7 +126,7 @@ jobs:
           ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
 
-      # 构建前端
+      # Build frontend
       - name: Build frontend
         run: |
           cd frontend
@@ -134,7 +134,7 @@ jobs:
         env:
           VITE_API_BASE_URL: /api
 
-      # 部署前端到 Pages
+      # Deploy frontend to Pages
       - name: Deploy frontend to Cloudflare Pages
         uses: cloudflare/pages-action@v1
         with:
