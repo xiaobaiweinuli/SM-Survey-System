@@ -19,8 +19,8 @@ jobs:
       - name: Setup Node.js 18 (兼容 Wrangler 3.x)
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
+          node-version: 20
+          cache: 'pnpm'
           cache-dependency-path: backend/package-lock.json
 
       - name: Install pnpm
