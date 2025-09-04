@@ -15,8 +15,7 @@ jobs:
     
     env:
       NODE_VERSION: '20'
-      # 指定一个最新的、行为一致的 Wrangler 版本
-      WRANGLER_VERSION: '4.34.0' # 或者更新的版本
+      WRANGLER_VERSION: '4.34.0' # 使用一个确定的 v4 版本
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -49,7 +48,7 @@ jobs:
         run: npm install
         working-directory: ./backend
 
-      # 1. [最终修复] 强制使用最新的 Wrangler 版本
+      # 1. [最终修复] 使用 Wrangler v4 的正确语法
       - name: Get D1 Database ID
         id: get_d1_id
         uses: cloudflare/wrangler-action@v3
@@ -66,7 +65,8 @@ jobs:
           wranglerVersion: ${{ env.WRANGLER_VERSION }}
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: kv:namespace list --json
+          # [语法修复] v4 使用 'kv namespace list' 而不是 'kv:namespace list'
+          command: kv namespace list --json
 
       # 2. 解析并更新 wrangler.toml (此步骤不变)
       - name: Update wrangler.toml with dynamic IDs
@@ -96,7 +96,7 @@ jobs:
           echo "wrangler.toml updated successfully."
           cat wrangler.toml
 
-      # 3. [最终修复] 为所有 wrangler-action 调用指定版本
+      # 3. [语法修复] 使用 v4 语法执行迁移
       - name: Apply Database Migrations
         uses: cloudflare/wrangler-action@v3
         with:
@@ -124,6 +124,7 @@ jobs:
           command: d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
           workingDirectory: ./backend
 
+      # 4. 部署 Worker 和 Pages
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
