@@ -6,7 +6,6 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -29,39 +28,35 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
-      # 1. [新修复] 显式安装最新版本的 Wrangler
-      - name: Install Wrangler CLI
-        run: npm install -g wrangler
-
+      # 1. [新修复] 先设置 pnpm，让它先配置好自己的环境
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 9
           run_install: false
 
-      # 注意：下面的步骤移除了 working-directory，改为在 run 命令中使用 cd
-      # 这有助于保持环境的一致性，但使用 working-directory 也可以
-      
+      # 2. [新修复] 在 pnpm 设置好之后，再全局安装 Wrangler
+      # 这能确保 Wrangler 的路径在 PATH 中具有最高优先级
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
+
       - name: Install Frontend Dependencies
-        run: |
-          cd ./frontend
-          pnpm install
+        run: pnpm install
+        working-directory: ./frontend
 
       - name: Build Frontend
-        run: |
-          cd ./frontend
-          pnpm run build
+        run: pnpm run build
+        working-directory: ./frontend
 
       - name: Install Backend Dependencies
-        run: |
-          cd ./backend
-          npm install
+        run: npm install
+        working-directory: ./backend
 
       - name: Update wrangler.toml with Resource IDs
         id: update_ids
-        working-directory: ./backend # 仍然在 backend 目录执行，因为它需要访问 wrangler.toml
+        working-directory: ./backend
         run: |
-          # 2. [新修复] 直接调用全局安装的 wrangler，不再使用 npx
+          # 现在直接调用 wrangler 应该会命中正确的全局版本
           echo "Fetching D1 Database ID..."
           D1_ID=$(wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           if [ -z "$D1_ID" ]; then
@@ -90,10 +85,9 @@ jobs:
         working-directory: ./backend
         run: |
           echo "Applying database migrations to remote D1..."
-          # 直接调用全局 wrangler
           wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
-          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/02_initial_data.sql
-          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/03_email_templates_and_site_configs.sql
+          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
+          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
 
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
