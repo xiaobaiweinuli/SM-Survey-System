@@ -7,7 +7,6 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -48,35 +47,22 @@ jobs:
         run: npm install
         working-directory: ./backend
 
-      # [最终修复] 将所有动态配置和迁移操作合并到一个步骤中
       - name: Configure and Migrate
         working-directory: ./backend
         run: |
-          # 1. 在项目本地安装 wrangler，确保 npx 能精确找到它
           echo "Installing Wrangler v${{ env.WRANGLER_VERSION }} locally..."
           npm install wrangler@${{ env.WRANGLER_VERSION }}
 
-          # 2. 使用本地安装的 wrangler (通过 npx) 执行所有命令
           echo "Fetching resource IDs..."
           D1_JSON=$(npx wrangler d1 list --json)
-          
-          # [关键修复] 根据最新日志，kv namespace list 现在默认输出 JSON
-          KV_JSON=$(npx wrangler kv namespace list)
+          KV_JSON=$(npx wrangler kv namespace list --json)
 
-          # 3. 统一使用 jq 解析所有输出
-          echo "Parsing D1 JSON..."
+          echo "Parsing JSON..."
           D1_ID=$(echo "$D1_JSON" | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          
-          echo "Parsing KV JSON..."
           KV_ID=$(echo "$KV_JSON" | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
 
-          # 4. 验证并更新 wrangler.toml
-          if [ -z "$D1_ID" ]; then
-            echo "::error::Could not find D1 Database 'sm-auth-survey-db'."
-            exit 1
-          fi
-          if [ -z "$KV_ID" ]; then
-            echo "::error::Could not find KV Namespace 'sm-auth-survey-api-CACHE'."
+          if [ -z "$D1_ID" ] || [ -z "$KV_ID" ]; then
+            echo "::error::Could not find required resource IDs."
             exit 1
           fi
           
@@ -84,20 +70,19 @@ jobs:
           echo "Found KV ID: $KV_ID"
 
           echo "Updating wrangler.toml..."
-          sed -i 's|database_id = ".*"|database_id = "'"$D1_ID"'"|' wrangler.toml
+          # [最终修复] 调整 sed 命令的顺序，避免错误覆盖
           sed -i 's|id = ".*"|id = "'"$KV_ID"'"|' wrangler.toml
           sed -i 's|preview_id = ".*"|preview_id = "'"$KV_ID"'"|' wrangler.toml
+          sed -i 's|database_id = ".*"|database_id = "'"$D1_ID"'"|' wrangler.toml
           
           echo "wrangler.toml updated successfully:"
           cat wrangler.toml
 
-          # 5. 执行数据库迁移
           echo "Applying database migrations..."
           npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
           npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
           npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
 
-      # 部署步骤
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
