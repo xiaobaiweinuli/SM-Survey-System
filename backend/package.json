@@ -1,0 +1,29 @@
+{
+  "name": "auth-survey-backend",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "db:migrate": "wrangler d1 migrations apply auth-survey-db",
+    "db:migrate:staging": "wrangler d1 migrations apply auth-survey-db --env staging",
+    "db:migrate:production": "wrangler d1 migrations apply auth-survey-db --env production",
+    "type-check": "tsc --noEmit",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["cloudflare", "workers", "survey", "authentication"],
+  "author": "",
+  "license": "MIT",
+  "description": "Cloudflare Workers backend for authentication survey system",
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20250904.0",
+    "wrangler": "^4.34.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.1",
+    "typescript": "^5.9.2"
+  }
+}

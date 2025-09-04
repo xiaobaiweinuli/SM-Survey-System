@@ -1,0 +1,226 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Cloudflare Workers and Pages
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            backend/package-lock.json
+
+      # 安装依赖
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Install backend dependencies
+        run: |
+          cd backend
+          npm ci
+
+      # 创建D1数据库（如果不存在）
+      - name: Create D1 database
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 create sm-auth-survey-db
+          workingDirectory: backend
+        continue-on-error: true
+
+      # 创建KV命名空间（如果不存在）
+      - name: Create KV namespace
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: kv:namespace create "CACHE"
+          workingDirectory: backend
+        continue-on-error: true
+
+      # 创建R2存储桶（如果不存在）
+      - name: Create R2 bucket
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 bucket create sm-auth-survey-files
+          workingDirectory: backend
+        continue-on-error: true
+
+      # 获取D1数据库ID并更新wrangler.toml
+      - name: Get D1 database ID and update wrangler.toml
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 list --json
+          workingDirectory: backend
+        id: d1_list
+
+      - name: Update wrangler.toml with actual IDs
+        run: |
+          cd backend
+          # 获取D1数据库ID
+          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          echo "D1 Database ID: $D1_ID"
+          
+          # 获取KV命名空间ID
+          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
+          echo "KV Namespace ID: $KV_ID"
+          
+          # 更新wrangler.toml
+          if [ ! -z "$D1_ID" ]; then
+            sed -i "s/database_id = \"your-database-id-will-be-auto-generated\"/database_id = \"$D1_ID\"/" wrangler.toml
+          fi
+          
+          if [ ! -z "$KV_ID" ]; then
+            sed -i "s/id = \"your-kv-namespace-id\"/id = \"$KV_ID\"/" wrangler.toml
+            sed -i "s/preview_id = \"your-preview-kv-namespace-id\"/preview_id = \"$KV_ID\"/" wrangler.toml
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # 运行数据库迁移
+      - name: Run database migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 execute sm-auth-survey-db --file=./migrations/0001_initial_schema.sql
+          workingDirectory: backend
+        continue-on-error: true
+
+      - name: Run initial data migration
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 execute sm-auth-survey-db --file=./migrations/0002_initial_data.sql
+          workingDirectory: backend
+        continue-on-error: true
+
+      - name: Run email templates and site configs migration
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 execute sm-auth-survey-db --file=./migrations/0003_email_templates_and_site_configs.sql
+          workingDirectory: backend
+        continue-on-error: true
+
+      # 部署后端到Cloudflare Workers
+      - name: Deploy backend to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
+          workingDirectory: backend
+        env:
+          # 环境变量会自动传递给Worker
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+          FROM_NAME: ${{ secrets.FROM_NAME }}
+          ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+          ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+          TENCENT_SECRET_ID: ${{ secrets.TENCENT_SECRET_ID }}
+          TENCENT_SECRET_KEY: ${{ secrets.TENCENT_SECRET_KEY }}
+          ADMIN_NAME: ${{ secrets.ADMIN_NAME }}
+          ADMIN_ID_CARD: ${{ secrets.ADMIN_ID_CARD }}
+          WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
+
+      # 构建前端（使用内部API调用）
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm run build
+        env:
+          # 使用Cloudflare内部调用，无需外部域名
+          VITE_API_BASE_URL: /api
+
+      # 部署前端到Cloudflare Pages
+      - name: Deploy frontend to Cloudflare Pages
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: sm-auth-survey-frontend
+          directory: frontend/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      # 配置Pages与Worker的内部路由
+      - name: Configure Pages routing to Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages project create sm-auth-survey-frontend --compatibility-date=2024-09-05 --production-branch=main
+          workingDirectory: backend
+        continue-on-error: true
+
+      # 创建Pages的_routes.json文件以实现内部API调用
+      - name: Configure Pages API routing
+        run: |
+          cd frontend/dist
+          cat > _routes.json << 'EOF'
+          {
+            "version": 1,
+            "include": ["/*"],
+            "exclude": ["/api/*"]
+          }
+          EOF
+          
+          # 重新部署前端以包含路由配置
+          cd ../..
+
+      - name: Redeploy frontend with routing config
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: sm-auth-survey-frontend
+          directory: frontend/dist
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+
+      # 输出部署信息
+      - name: Output deployment info
+        run: |
+          echo "🚀 Deployment completed successfully!"
+          echo "📱 Frontend URL: https://sm-auth-survey-frontend.pages.dev"
+          echo "🔧 Backend API: https://sm-auth-survey-api.${{ secrets.CLOUDFLARE_ACCOUNT_ID }}.workers.dev"
+          echo "💾 Database: sm-auth-survey-db"
+          echo "📁 Storage: sm-auth-survey-files"
+          echo "🔗 Internal API calls configured for optimal performance"
+          echo ""
+          echo "✅ Features enabled:"
+          echo "  - Automatic D1, R2, KV creation and binding"
+          echo "  - Database migrations"
+          echo "  - Internal API routing"
+          echo "  - Resend email service"
+          echo "  - Site configuration management"
+          echo "  - Email template management"
+
