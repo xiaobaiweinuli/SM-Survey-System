@@ -131,3 +131,6 @@ export async function generateAdminToken(admin, secret) {
   return await generateToken(payload, secret);
 }
 
+// 别名导出，用于兼容
+export const generateJWT = generateToken;
+

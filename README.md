@@ -79,7 +79,7 @@
 1. **克隆仓库**
    ```bash
    git clone https://github.com/xiaobaiweinuli/SM-Survey-System.git
-   cd SM-Survey-System
+   cd sm-auth-survey-system
    ```
 
 2. **自动化设置**

@@ -80,7 +80,7 @@
 
 # 方式2：克隆项目到本地
 git clone https://github.com/xiaobaiweinuli/SM-Survey-System.git
-cd SM-Survey-System
+cd cloudflare-auth-survey-system
 ```
 
 ### 第二步：配置GitHub环境变量

@@ -124,7 +124,7 @@ export class NotificationService {
     
     for (const [key, value] of Object.entries(variables)) {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      result = result.替换(regex， value || '');
+      result = result.replace(regex, value || '');
     }
 
     return result;
@@ -136,70 +136,70 @@ export class NotificationService {
       userName: user.name,
       userId: user.id,
       registrationTime: new Date().toLocaleString('zh-CN'),
-      loginUrl: `${this。env。FRONTEND_URL}/login`
+      loginUrl: `${this.env.FRONTEND_URL}/login`
     });
 
     return await this.sendEmail({
-      到: user。email || `${user.name}@example.com`, // 如果没有邮箱，使用默认格式
-      subject: template。subject,
-      html: template。html,
+      to: user.email || `${user.name}@example.com`, // 如果没有邮箱，使用默认格式
+      subject: template.subject,
+      html: template.html,
       text: template.text
     });
   }
 
   // 发送实名认证状态通知
-  async sendAuthStatusNotification(user， status， reason = '') {
+  async sendAuthStatusNotification(user, status, reason = '') {
     const statusText = {
-      'pending': '审核中'，
-      'approved': '已通过'，
+      'pending': '审核中',
+      'approved': '已通过',
       'rejected': '已拒绝'
     };
 
-    const template = await this。renderEmailTemplate('auth_status', {
-      userName: user。name,
+    const template = await this.renderEmailTemplate('auth_status', {
+      userName: user.name,
       status: statusText[status] || status,
       reason: reason,
       statusTime: new Date().toLocaleString('zh-CN'),
       dashboardUrl: `${this.env.FRONTEND_URL}/dashboard`
     });
 
-    return await this。sendEmail({
-      到: user.email || `${user。name}@example.com`,
-      subject: template。subject,
-      html: template。html,
+    return await this.sendEmail({
+      to: user.email || `${user.name}@example.com`,
+      subject: template.subject,
+      html: template.html,
       text: template.text
     });
   }
 
   // 发送问卷提交通知
-  async sendSurveySubmissionNotification(user， surveyTitle) {
+  async sendSurveySubmissionNotification(user, surveyTitle) {
     const template = await this.renderEmailTemplate('survey_submission', {
       userName: user.name,
-      surveyTitle: surveyTitle，
+      surveyTitle: surveyTitle,
       submissionTime: new Date().toLocaleString('zh-CN'),
       dashboardUrl: `${this.env.FRONTEND_URL}/dashboard`
     });
 
-    return await this。sendEmail({
-      到: user。email || `${user.name}@example.com`,
-      subject: template。subject,
-      html: template。html,
+    return await this.sendEmail({
+      to: user.email || `${user.name}@example.com`,
+      subject: template.subject,
+      html: template.html,
       text: template.text
     });
   }
 
   // 发送任务领取通知
-  async sendTaskClaimNotification(user， taskTitle， userTaskId) {
+  async sendTaskClaimNotification(user, taskTitle, userTaskId) {
     const template = await this.renderEmailTemplate('task_claim', {
-      userName: user.name，
-      taskTitle: taskTitle，
-      claimTime: new Date()。toLocaleString('zh-CN'),
+      userName: user.name,
+      taskTitle: taskTitle,
+      claimTime: new Date().toLocaleString('zh-CN'),
       taskUrl: `${this.env.FRONTEND_URL}/tasks/submission/${userTaskId}`
     });
 
     return await this.sendEmail({
-      到: user.email || `${user.name}@example.com`,
-      subject: template.subject，
+      to: user.email || `${user.name}@example.com`,
+      subject: template.subject,
       html: template.html,
       text: template.text
     });
@@ -478,25 +478,25 @@ export class NotificationService {
           content: `## ${periodText}报统计
           
 **数据概览：**
-- 新增用户：${stats。newUsers || 0}人
-- 问卷提交：${stats。surveySubmissions || 0}份
-- 任务完成：${stats。taskSubmissions || 0}个
-- 文件上传：${stats。fileUploads || 0}个
-- 活跃用户：${stats。activeUsers || 0}人
+- 新增用户：${stats.newUsers || 0}人
+- 问卷提交：${stats.surveySubmissions || 0}份
+- 任务完成：${stats.taskSubmissions || 0}个
+- 文件上传：${stats.fileUploads || 0}个
+- 活跃用户：${stats.activeUsers || 0}人
 
 **系统状态：**
-- 总用户数：${stats。totalUsers || 0}人
-- 认证用户：${stats。verifiedUsers || 0}人
-- 存储使用：${this。formatFileSize(stats。storageUsed || 0)}
+- 总用户数：${stats.totalUsers || 0}人
+- 认证用户：${stats.verifiedUsers || 0}人
+- 存储使用：${this.formatFileSize(stats.storageUsed || 0)}
 
-统计时间：${new Date()。toLocaleString('zh-CN')}`
+统计时间：${new Date().toLocaleString('zh-CN')}`
         }
       };
 
-      await this。sendWebhook(message);
+      await this.sendWebhook(message);
 
     } catch (error) {
-      console。error('Send stats notification error:'， error);
+      console.error('Send stats notification error:', error);
     }
   }
 

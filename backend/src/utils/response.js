@@ -72,3 +72,12 @@ export function createFileResponse(fileData, fileName, mimeType) {
   });
 }
 
+// 简化的响应函数，用于控制器
+export function successResponse(data, message = '操作成功', statusCode = 200) {
+  return createResponse(data, message, statusCode);
+}
+
+export function errorResponse(message, statusCode = 400, code = 'ERROR', details = null) {
+  return createErrorResponse(code, message, statusCode, details);
+}
+
