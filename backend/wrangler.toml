@@ -12,34 +12,32 @@ name = "sm-auth-survey-api-staging"
 [env.development]
 name = "sm-auth-survey-api-dev"
 
-# D1 数据库配置
+# D1 数据库配置（CI 会自动填充 ID）
 [[d1_databases]]
 binding = "DB"
 database_name = "sm-auth-survey-db"
-database_id = "your-database-id-will-be-auto-generated"
+database_id = "PLACEHOLDER_D1_ID"
 
 # R2 存储配置
 [[r2_buckets]]
 binding = "BUCKET"
 bucket_name = "sm-auth-survey-files"
 
-# KV 存储配置（用于缓存和会话）
+# KV 存储配置（CI 会自动填充 ID）
 [[kv_namespaces]]
 binding = "CACHE"
-id = "your-kv-namespace-id"
-preview_id = "your-preview-kv-namespace-id"
+id = "PLACEHOLDER_KV_ID"
+preview_id = "PLACEHOLDER_KV_ID"
 
-# 环境变量（开发环境，生产环境通过GitHub Secrets设置）
+# 环境变量
 [vars]
 ENVIRONMENT = "development"
 
-# 生产环境变量（通过GitHub Actions设置）
 [env.production.vars]
 ENVIRONMENT = "production"
 
-# CORS配置
+# CORS 配置
 [cors]
 origins = ["*"]
 methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
 headers = ["*"]
-
