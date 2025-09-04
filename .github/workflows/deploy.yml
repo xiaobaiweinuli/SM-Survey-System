@@ -46,7 +46,7 @@ jobs:
       - name: Ensure D1 database exists
         run: |
           cd backend
-          EXIST=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          EXIST=$(npx wrangler d1 list --format json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           if [ -z "$EXIST" ]; then
             npx wrangler d1 create sm-auth-survey-db
           fi
@@ -58,7 +58,7 @@ jobs:
       - name: Ensure KV namespace exists
         run: |
           cd backend
-          EXIST=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          EXIST=$(npx wrangler kv:namespace list --format json | jq -r '.[] | select(.title=="CACHE") | .id')
           if [ -z "$EXIST" ]; then
             npx wrangler kv:namespace create "CACHE"
           fi
@@ -70,7 +70,7 @@ jobs:
       - name: Ensure R2 bucket exists
         run: |
           cd backend
-          EXIST=$(npx wrangler r2 bucket list --json | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
+          EXIST=$(npx wrangler r2 bucket list --format json | jq -r '.[] | select(.name=="sm-auth-survey-files") | .name')
           if [ -z "$EXIST" ]; then
             npx wrangler r2 bucket create sm-auth-survey-files
           fi
@@ -82,8 +82,8 @@ jobs:
       - name: Update wrangler.toml with actual IDs
         run: |
           cd backend
-          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="CACHE") | .id')
+          D1_ID=$(npx wrangler d1 list --format json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          KV_ID=$(npx wrangler kv:namespace list --format json | jq -r '.[] | select(.title=="CACHE") | .id')
 
           sed -i "s/your-database-id-will-be-auto-generated/$D1_ID/" wrangler.toml
           sed -i "s/your-kv-namespace-id/$KV_ID/" wrangler.toml
