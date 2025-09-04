@@ -6,7 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
-
+permissions:
+  contents: read      # 允许 checkout 代码 (必需)
+  deployments: write   # 允许 cloudflare/pages-action 创建部署状态 (解决 403 错误)
 jobs:
   deploy-backend-worker:
     runs-on: ubuntu-latest
