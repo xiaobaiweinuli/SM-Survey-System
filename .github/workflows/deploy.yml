@@ -12,13 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy to Cloudflare Workers and Pages
     
-    # 设置环境变量，方便在所有步骤中使用
     env:
-      NODE_VERSION: '20' # 1. [修复] 升级 Node.js 版本
-      # 将 Cloudflare 凭证设置为环境变量，wrangler-action 会自动使用
+      NODE_VERSION: '20'
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      # 后端 Worker 需要的环境变量
       JWT_SECRET: ${{ secrets.JWT_SECRET }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       # ... 其他 secrets
@@ -32,34 +29,41 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      # 1. [新修复] 显式安装最新版本的 Wrangler
+      - name: Install Wrangler CLI
+        run: npm install -g wrangler
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9 # 或者你希望使用的 pnpm 版本
+          version: 9
           run_install: false
 
+      # 注意：下面的步骤移除了 working-directory，改为在 run 命令中使用 cd
+      # 这有助于保持环境的一致性，但使用 working-directory 也可以
+      
       - name: Install Frontend Dependencies
-        working-directory: ./frontend
-        run: pnpm install
+        run: |
+          cd ./frontend
+          pnpm install
 
       - name: Build Frontend
-        working-directory: ./frontend
-        run: pnpm run build
+        run: |
+          cd ./frontend
+          pnpm run build
 
       - name: Install Backend Dependencies
-        working-directory: ./backend
-        run: npm install # 或者 npm ci，如果你的依赖已锁定
-
-      # 2. [优化] 移除资源创建步骤。这些资源应该预先创建好。
-      # CI/CD 的职责是部署和迁移，而不是管理基础设施的生命周期。
+        run: |
+          cd ./backend
+          npm install
 
       - name: Update wrangler.toml with Resource IDs
         id: update_ids
-        working-directory: ./backend
+        working-directory: ./backend # 仍然在 backend 目录执行，因为它需要访问 wrangler.toml
         run: |
-          # 3. [修复] 使用 jq 安全地从 JSON 输出中获取 ID
+          # 2. [新修复] 直接调用全局安装的 wrangler，不再使用 npx
           echo "Fetching D1 Database ID..."
-          D1_ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
+          D1_ID=$(wrangler d1 list --json | jq -r '.[] | select(.name=="sm-auth-survey-db") | .uuid')
           if [ -z "$D1_ID" ]; then
             echo "::error::D1 Database 'sm-auth-survey-db' not found."
             exit 1
@@ -67,8 +71,7 @@ jobs:
           echo "D1_DATABASE_ID=$D1_ID" >> $GITHUB_OUTPUT
 
           echo "Fetching KV Namespace ID..."
-          # 假设 KV 命名空间名称为 "sm-auth-survey-api-CACHE"
-          KV_ID=$(npx wrangler kv:namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
+          KV_ID=$(wrangler kv:namespace list --json | jq -r '.[] | select(.title=="sm-auth-survey-api-CACHE") | .id')
           if [ -z "$KV_ID" ]; then
             echo "::error::KV Namespace 'sm-auth-survey-api-CACHE' not found."
             exit 1
@@ -81,28 +84,26 @@ jobs:
           sed -i "s/preview_id = \".*\"/preview_id = \"$KV_ID\"/" wrangler.toml
           
           echo "wrangler.toml updated successfully."
-          cat wrangler.toml # 打印更新后的文件内容以供调试
+          cat wrangler.toml
 
       - name: Apply Database Migrations
         working-directory: ./backend
         run: |
           echo "Applying database migrations to remote D1..."
-          # 4. [修复] 添加 --remote 标志，确保在云端数据库上执行
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0002_initial_data.sql
-          npx wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0003_email_templates_and_site_configs.sql
+          # 直接调用全局 wrangler
+          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/0001_initial_schema.sql
+          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/02_initial_data.sql
+          wrangler d1 execute sm-auth-survey-db --remote --file=./migrations/03_email_templates_and_site_configs.sql
 
       - name: Deploy Worker (Backend)
         uses: cloudflare/wrangler-action@v3
         with:
-          # apiToken 和 accountId 已通过环境变量设置
           command: deploy
           workingDirectory: ./backend
 
       - name: Deploy Pages (Frontend)
         uses: cloudflare/pages-action@v1
         with:
-          # apiToken 和 accountId 已通过环境变量设置
           projectName: 'sm-auth-survey-frontend' # 替换为你的 Pages 项目名称
-          directory: ./frontend/dist # 替换为你的前端构建输出目录
+          directory: ./frontend/dist
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
