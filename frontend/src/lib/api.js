@@ -107,34 +107,34 @@ class ApiClient {
   }
 
   // 文件上传
-  async uploadFile(endpoint, file, additionalData = {}) {
+  async uploadFile(endpoint， file， additionalData = {}) {
     const formData = new FormData();
     formData.append('file', file);
     
     // 添加额外数据
-    Object.keys(additionalData).forEach(key => {
-      formData.append(key, additionalData[key]);
+    Object.keys(additionalData)。forEach(key => {
+      formData.append(key， additionalData[key]);
     });
 
     const headers = {};
     if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+      headers.Authorization = `Bearer ${this。token}`;
     }
 
     const response = await fetch(`${this.baseURL}/api${endpoint}`, {
       method: 'POST',
-      headers,
-      body: formData,
+      headers，
+      body: formData，
     });
 
-    return this.handleResponse(response);
+    return this。handleResponse(response);
   }
 
   // Base64文件上传
-  async uploadBase64File(endpoint, base64Data, fileName, mimeType, additionalData = {}) {
+  async uploadBase64File(endpoint, base64Data， fileName, mimeType, additionalData = {}) {
     const data = {
       file_data: base64Data,
-      file_name: fileName,
+      file_name: fileName，
       mime_type: mimeType,
       ...additionalData
     };
@@ -151,7 +151,7 @@ class ApiClient {
         case 'get':
           return this.get(endpoint, params);
         case 'post':
-          return this.post(endpoint, data);
+          return this.post(endpoint， data);
         case 'put':
           return this.put(endpoint, data);
         case 'delete':
@@ -506,14 +506,14 @@ export const deleteAnnouncement = async (announcementId) => {
 
 // 获取所有邮件模板
 export const getEmailTemplates = async () => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`, {
-    method: 'GET',
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`， {
+    method: 'GET'，
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    },
+    }，
   });
 
-  if (!response.ok) {
+  if (!response。ok) {
     throw new Error('获取邮件模板失败');
   }
 
@@ -526,7 +526,7 @@ export const getEmailTemplate = async (templateId) => {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    },
+    }，
   });
 
   if (!response.ok) {
@@ -539,11 +539,11 @@ export const getEmailTemplate = async (templateId) => {
 // 创建邮件模板
 export const createEmailTemplate = async (templateData) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`, {
-    method: 'POST',
+    method: 'POST'，
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json'，
       'Authorization': `Bearer ${getToken()}`,
-    },
+    }，
     body: JSON.stringify(templateData),
   });
 
@@ -575,7 +575,7 @@ export const updateEmailTemplate = async (templateId, templateData) => {
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
-    method: 'DELETE',
+    method: 'DELETE'，
     headers: {
       'Authorization': `Bearer ${getToken()}`,
     },
@@ -585,7 +585,7 @@ export const deleteEmailTemplate = async (templateId) => {
     throw new 错误('删除邮件模板失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
 // 测试邮件模板
@@ -593,13 +593,13 @@ export const testEmailTemplate = async (templateId, testEmail, testVariables) =>
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`,
-    },
-    body: JSON。stringify({ templateId, testEmail, testVariables })，
+      'Content-Type': 'application/json'，
+      'Authorization': `Bearer ${getToken()}`，
+    }，
+    body: JSON。stringify({ templateId, testEmail, testVariables }),
   });
 
-  if (!response.ok) {
+  if (!response。ok) {
     throw new 错误('测试邮件发送失败');
   }
 
@@ -607,20 +607,20 @@ export const testEmailTemplate = async (templateId, testEmail, testVariables) =>
 };
 
 // 预览邮件模板
-export const previewEmailTemplate = async (templateData, variables) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`, {
+export const previewEmailTemplate = async (templateData， variables) => {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`,{
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`,
-    },
-    body: JSON.stringify({ ...templateData, variables }),
+    }，
+    body: JSON。stringify({ ...templateData, variables }),
   });
 
-  if (!response.ok) {
-    throw new Error('预览邮件模板失败');
+  if (!response。ok) {
+    throw new 错误('预览邮件模板失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
