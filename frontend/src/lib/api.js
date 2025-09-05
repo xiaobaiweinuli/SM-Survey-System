@@ -4,6 +4,16 @@
  * (最终修复版，统一出口，修复所有语法和URL拼接问题)
  */
 
+// API基础URL配置
+// 此常量用于直接fetch调用，ApiClient内部也使用相同逻辑
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
+
+// 获取Token函数
+// 此函数用于直接fetch调用，与ApiClient内部的getToken保持一致
+export const getToken = () => {
+  return localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+};
+
 class ApiClient {
   constructor() {
     this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
