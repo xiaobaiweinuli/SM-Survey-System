@@ -539,9 +539,9 @@ export const previewEmailTemplate = async (templateData,variables) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`,{
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'，
-      'Authorization': `Bearer ${getToken()}`，
-    }，
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`,
+    },
     body: JSON.stringify({ ...templateData,variables }),
   });
 
