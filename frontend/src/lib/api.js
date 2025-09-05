@@ -249,36 +249,36 @@ export const authAPI = {
 export const userAPI = {
   getProfile: () => apiClient.get(API_ENDPOINTS.USER.PROFILE),
   updateProfile: (data) => apiClient.put(API_ENDPOINTS.USER.PROFILE,data),
-  getStats: () => apiClient.get(API_ENDPOINTS。USER.STATS)
+  getStats: () => apiClient.get(API_ENDPOINTS.USER.STATS)
 };
 
 export const surveyAPI = {
-  getConfig: () => apiClient。get(API_ENDPOINTS。SURVEY.CONFIG),
-  submit: (data) => apiClient。post(API_ENDPOINTS.SURVEY.SUBMIT,data),
+  getConfig: () => apiClient.get(API_ENDPOINTS.SURVEY.CONFIG),
+  submit: (data) => apiClient.post(API_ENDPOINTS.SURVEY.SUBMIT,data),
   getSubmissions: (params) => apiClient.get(API_ENDPOINTS.SURVEY.SUBMISSIONS,params)
 };
 
 export const tasksAPI = {
   getTasks: (params) => apiClient.get(API_ENDPOINTS.TASKS.LIST,params),
-  getTask: (id) => apiClient.get(API_ENDPOINTS。TASKS。DETAIL(id)),
+  getTask: (id) => apiClient.get(API_ENDPOINTS.TASKS.DETAIL(id)),
   claimTask: (id) => apiClient.post(API_ENDPOINTS.TASKS.CLAIM(id)),
   submitTask: (id,data) => apiClient.post(API_ENDPOINTS.TASKS.SUBMIT(id),data),
-  getSubmissions: (params) => apiClient.get(API_ENDPOINTS。TASKS.SUBMISSIONS,params)
+  getSubmissions: (params) => apiClient.get(API_ENDPOINTS.TASKS.SUBMISSIONS,params)
 };
 
 export const filesAPI = {
-  upload: (file,additionalData) => apiClient。uploadFile(API_ENDPOINTS.FILES.UPLOAD,file,additionalData),
+  upload: (file,additionalData) => apiClient.uploadFile(API_ENDPOINTS.FILES.UPLOAD,file,additionalData),
   uploadBase64: (base64Data,fileName,mimeType,additionalData) => 
     apiClient.uploadBase64File(API_ENDPOINTS.FILES.UPLOAD,base64Data,fileName,mimeType,additionalData),
   getFile: (id) => apiClient.get(API_ENDPOINTS.FILES.DETAIL(id)),
-  deleteFile: (id) => apiClient。delete(API_ENDPOINTS。FILES.DELETE(id))
+  deleteFile: (id) => apiClient.delete(API_ENDPOINTS.FILES.DELETE(id))
 };
 
 export const adminAPI = {
-  getUsers: (params) => apiClient。get(API_ENDPOINTS。ADMIN.USERS,params),
-  getUser: (id) => apiClient。get(API_ENDPOINTS。ADMIN.USER_DETAIL(id)),
+  getUsers: (params) => apiClient.get(API_ENDPOINTS.ADMIN.USERS,params),
+  getUser: (id) => apiClient.get(API_ENDPOINTS.ADMIN.USER_DETAIL(id)),
   updateUserStatus: (id,data) => apiClient.put(API_ENDPOINTS.ADMIN.USER_STATUS(id),data),
-  getSurveys: (params) => apiClient。get(API_ENDPOINTS.ADMIN.SURVEYS,params),
+  getSurveys: (params) => apiClient.get(API_ENDPOINTS.ADMIN.SURVEYS,params),
   createSurvey: (data) => apiClient.post(API_ENDPOINTS.ADMIN.SURVEYS,data),
   updateSurvey: (id,data) => apiClient.put(API_ENDPOINTS.ADMIN.SURVEY_DETAIL(id),data),
   getSurveyStats: (id) => apiClient.get(API_ENDPOINTS.ADMIN.SURVEY_STATS(id)),
@@ -286,8 +286,8 @@ export const adminAPI = {
   createTask: (data) => apiClient.post(API_ENDPOINTS.ADMIN.TASKS,data),
   updateTask: (id,data) => apiClient.put(API_ENDPOINTS.ADMIN.TASK_DETAIL(id),data),
   getTaskStats: (id) => apiClient.get(API_ENDPOINTS.ADMIN.TASK_STATS(id)),
-  exportUsers: (params) => apiClient.get(API_ENDPOINTS。ADMIN.EXPORT_USERS,params),
-  exportSurveys: (params) => apiClient.get(API_ENDPOINTS。ADMIN.EXPORT_SURVEYS,params),
+  exportUsers: (params) => apiClient.get(API_ENDPOINTS.ADMIN.EXPORT_USERS,params),
+  exportSurveys: (params) => apiClient.get(API_ENDPOINTS.ADMIN.EXPORT_SURVEYS,params),
   exportTasks: (params) => apiClient.get(API_ENDPOINTS.ADMIN.EXPORT_TASKS,params)
 };
 
@@ -313,7 +313,7 @@ export const getPublicSiteConfigs = async () => {
     },
   });
 
-  if (!response。ok) {
+  if (!response.ok) {
     throw new 错误('获取网站配置失败');
   }
 
@@ -533,7 +533,7 @@ export const getEmailTemplate = async (templateId) => {
     throw new 错误('获取邮件模板失败');
   }
 
-  return response。json();
+  return response.json();
 };
 
 // 创建邮件模板
@@ -547,7 +547,7 @@ export const createEmailTemplate = async (templateData) => {
     body: JSON.stringify(templateData),
   });
 
-  if (!response。ok) {
+  if (!response.ok) {
     throw new 错误('创建邮件模板失败');
   }
 
