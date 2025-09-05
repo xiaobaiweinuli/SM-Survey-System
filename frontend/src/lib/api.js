@@ -1,17 +1,26 @@
 /**
  * API客户端库
  * 封装所有与后端API的通信
+ * (最终重构版，统一出口，修复URL拼接问题，无省略)
  */
 
 class ApiClient {
   constructor() {
+    // 关键改动 1: baseURL 现在总是一个绝对路径或完整的URL。
+    // 在生产环境 (VITE_API_BASE_URL 为 '/'), 它会是 '/'
+    // 在本地开发, 它会是 'http://localhost:8787'
     this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
     this.token = null;
   }
 
   // 设置认证Token
-  setToken(token) {
+  setToken(token ) {
     this.token = token;
+  }
+
+  // 获取认证Token (辅助方法)
+  getToken() {
+    return this.token;
   }
 
   // 获取请求头
@@ -19,106 +28,93 @@ class ApiClient {
     const headers = {
       'Content-Type': 'application/json',
     };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (this.getToken()) {
+      headers.Authorization = `Bearer ${this.getToken()}`;
     }
-
     return headers;
+  }
+
+  // 关键改动 2: 创建一个统一的、绝对安全的 URL 构建器
+  _buildURL(endpoint) {
+    // 使用 URL 构造函数来安全地拼接，彻底避免斜杠问题。
+    // 浏览器会自动处理，生成完整的、正确的URL。
+    // 例如: new URL('/api/auth/login', '/') -> 'https://your.site/api/auth/login'
+    // 例如: new URL('/api/auth/login', 'http://localhost:8787' ) -> 'http://localhost:8787/api/auth/login'
+    return new URL(`/api${endpoint}`, this.baseURL ).href;
   }
 
   // 处理响应
   async handleResponse(response) {
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw {
-        status: response.status,
-        response: {
-          data: data
-        }
-      };
+    const contentType = response.headers.get("content-type");
+    if (response.status === 204 || !contentType || !contentType.includes("application/json")) {
+      if (response.ok) return { success: true, status: response.status };
+      const textError = await response.text();
+      throw { status: response。status, message: textError || response.statusText };
     }
-
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw { status: response.status, response: { data: data } };
+    }
     return data;
   }
 
-  // GET请求
-  async get(endpoint, params = {}) {
-    const url = new URL(`${this.baseURL}/api${endpoint}`);
-    
-    // 添加查询参数
+  // 所有请求方法现在都使用 _buildURL
+  async get(endpoint， params = {}) {
+    const url = new URL(this._buildURL(endpoint));
     Object.keys(params).forEach(key => {
       if (params[key] !== undefined && params[key] !== null) {
-        url.searchParams.append(key, params[key]);
+        url。searchParams.append(key, params[key]);
       }
     });
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
-    return this.handleResponse(response);
+    const response = await fetch(url。toString(), { method: 'GET', headers: this.getHeaders() });
+    return this。handleResponse(response);
   }
 
-  // POST请求
-  async post(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+  async post(endpoint， data = {}) {
+    const response = await fetch(this._buildURL(endpoint)， {
       method: 'POST',
-      headers: this.getHeaders(),
-      body: JSON.stringify(data),
+      headers: this.getHeaders()，
+      body: JSON。stringify(data),
     });
-
-    return this.handleResponse(response);
+    return this。handleResponse(response);
   }
 
-  // PUT请求
   async put(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this。_buildURL(endpoint), {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-
     return this.handleResponse(response);
   }
 
-  // DELETE请求
   async delete(endpoint) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-
     return this.handleResponse(response);
   }
 
-  // 文件上传
   async uploadFile(endpoint, file, additionalData = {}) {
     const formData = new FormData();
     formData.append('file', file);
+    Object.keys(additionalData).forEach(key => formData.append(key, additionalData[key]));
     
-    // 添加额外数据
-    Object.keys(additionalData).forEach(key => {
-      formData.append(key, additionalData[key]);
-    });
-
     const headers = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (this.getToken()) {
+      headers.Authorization = `Bearer ${this.getToken()}`;
     }
 
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'POST',
       headers,
       body: formData,
     });
-
     return this.handleResponse(response);
   }
 
-  // Base64文件上传
   async uploadBase64File(endpoint, base64Data, fileName, mimeType, additionalData = {}) {
     const data = {
       file_data: base64Data,
@@ -126,106 +122,47 @@ class ApiClient {
       mime_type: mimeType,
       ...additionalData
     };
-
     return this.post(endpoint, data);
   }
 
-  // 批量请求
   async batch(requests) {
     const promises = requests.map(request => {
       const { method, endpoint, data, params } = request;
-      
       switch (method.toLowerCase()) {
-        case 'get':
-          return this.get(endpoint, params);
-        case 'post':
-          return this.post(endpoint, data);
-        case 'put':
-          return this.put(endpoint, data);
-        case 'delete':
-          return this.delete(endpoint);
-        default:
-          throw new Error(`Unsupported method: ${method}`);
+        case 'get': return this.get(endpoint, params);
+        case 'post': return this.post(endpoint, data);
+        case 'put': return this.put(endpoint, data);
+        case 'delete': return this.delete(endpoint);
+        default: throw new Error(`Unsupported method: ${method}`);
       }
     });
-
     return Promise.allSettled(promises);
   }
 }
 
-// 创建API客户端实例
+// =================================================================
+// 统一的 API 客户端实例
+// =================================================================
 export const apiClient = new ApiClient();
 
-// API端点常量
+// =================================================================
+// API 端点常量定义
+// =================================================================
 export const API_ENDPOINTS = {
-  // 认证相关
-  AUTH: {
-    REGISTER: '/auth/register',
-    LOGIN: '/auth/login',
-    ADMIN_LOGIN: '/auth/admin/login',
-    REFRESH: '/auth/refresh',
-    LOGOUT: '/auth/logout'
-  },
-
-  // 用户相关
-  USER: {
-    PROFILE: '/user/profile',
-    STATS: '/user/stats'
-  },
-
-  // 问卷相关
-  SURVEY: {
-    CONFIG: '/survey/config',
-    SUBMIT: '/survey/submit',
-    SUBMISSIONS: '/survey/submissions'
-  },
-
-  // 任务相关
-  TASKS: {
-    LIST: '/tasks',
-    DETAIL: (id) => `/tasks/${id}`,
-    CLAIM: (id) => `/tasks/${id}/claim`,
-    SUBMIT: (id) => `/tasks/${id}/submit`,
-    SUBMISSIONS: '/tasks/submissions'
-  },
-
-  // 文件相关
-  FILES: {
-    UPLOAD: '/files/upload',
-    DETAIL: (id) => `/files/${id}`,
-    DELETE: (id) => `/files/${id}`
-  },
-
-  // 管理后台
-  ADMIN: {
-    USERS: '/admin/users',
-    USER_DETAIL: (id) => `/admin/users/${id}`,
-    USER_STATUS: (id) => `/admin/users/${id}/status`,
-    SURVEYS: '/admin/surveys',
-    SURVEY_DETAIL: (id) => `/admin/surveys/${id}`,
-    SURVEY_STATS: (id) => `/admin/surveys/${id}/stats`,
-    TASKS: '/admin/tasks',
-    TASK_DETAIL: (id) => `/admin/tasks/${id}`,
-    TASK_STATS: (id) => `/admin/tasks/${id}/stats`,
-    EXPORT_USERS: '/admin/export/users',
-    EXPORT_SURVEYS: '/admin/export/surveys',
-    EXPORT_TASKS: '/admin/export/tasks'
-  },
-
-  // 系统配置
-  CONFIG: {
-    PUBLIC: '/config/public',
-    UPDATE: '/admin/config'
-  },
-
-  // 通知相关
-  NOTIFICATIONS: {
-    LIST: '/notifications',
-    MARK_READ: (id) => `/notifications/${id}/read`
-  }
+  AUTH: { REGISTER: '/auth/register', LOGIN: '/auth/login', ADMIN_LOGIN: '/auth/admin/login', REFRESH: '/auth/refresh', LOGOUT: '/auth/logout' },
+  USER: { PROFILE: '/user/profile', STATS: '/user/stats' },
+  SURVEY: { CONFIG: '/survey/config', SUBMIT: '/survey/submit', SUBMISSIONS: '/survey/submissions' },
+  TASKS: { LIST: '/tasks', DETAIL: (id) => `/tasks/${id}`, CLAIM: (id) => `/tasks/${id}/claim`, SUBMIT: (id) => `/tasks/${id}/submit`, SUBMISSIONS: '/tasks/submissions' },
+  FILES: { UPLOAD: '/files/upload', DETAIL: (id) => `/files/${id}`, DELETE: (id) => `/files/${id}` },
+  ADMIN: { USERS: '/admin/users', USER_DETAIL: (id) => `/admin/users/${id}`, USER_STATUS: (id) => `/admin/users/${id}/status`, SURVEYS: '/admin/surveys', SURVEY_DETAIL: (id) => `/admin/surveys/${id}`, SURVEY_STATS: (id) => `/admin/surveys/${id}/stats`, TASKS: '/admin/tasks', TASK_DETAIL: (id) => `/admin/tasks/${id}`, TASK_STATS: (id) => `/admin/tasks/${id}/stats`, EXPORT_USERS: '/admin/export/users', EXPORT_SURVEYS: '/admin/export/surveys', EXPORT_TASKS: '/admin/export/tasks', SITE_CONFIG: '/admin/site-config', FOOTER_LINKS: '/admin/site-config/footer-links', FOOTER_LINK_DETAIL: (id) => `/admin/site-config/footer-links/${id}`, ANNOUNCEMENTS: '/admin/site-config/announcements', ANNOUNCEMENT_DETAIL: (id) => `/admin/site-config/announcements/${id}`, EMAIL_TEMPLATES: '/admin/site-config/email-templates', EMAIL_TEMPLATE_DETAIL: (id) => `/admin/site-config/email-templates/${id}`, EMAIL_TEMPLATE_TEST: (id) => `/admin/site-config/email-templates/${id}/test`, EMAIL_TEMPLATE_PREVIEW: '/admin/site-config/email-templates/preview', SITE_ASSETS: '/admin/site-config/assets', SITE_ASSET_DETAIL: (key) => `/admin/site-config/assets/${key}` },
+  CONFIG: { PUBLIC: '/config/public' },
+  NOTIFICATIONS: { LIST: '/notifications', MARK_READ: (id) => `/notifications/${id}/read` }
 };
 
-// 便捷方法
+// =================================================================
+// 便捷方法导出 (所有方法现在都通过 apiClient)
+// =================================================================
+
 export const authAPI = {
   register: (data) => apiClient.post(API_ENDPOINTS.AUTH.REGISTER, data),
   login: (data) => apiClient.post(API_ENDPOINTS.AUTH.LOGIN, data),
@@ -281,13 +218,41 @@ export const adminAPI = {
 
 export const configAPI = {
   getPublicConfig: () => apiClient.get(API_ENDPOINTS.CONFIG.PUBLIC),
-  updateConfig: (data) => apiClient.put(API_ENDPOINTS.CONFIG.UPDATE, data)
+  updateConfig: (data) => apiClient.put(API_ENDPOINTS.ADMIN.SITE_CONFIG, data)
 };
 
 export const notificationsAPI = {
   getNotifications: (params) => apiClient.get(API_ENDPOINTS.NOTIFICATIONS.LIST, params),
   markAsRead: (id) => apiClient.put(API_ENDPOINTS.NOTIFICATIONS.MARK_READ(id))
 };
+
+export const siteConfigAPI = {
+  getPublic: () => apiClient.get(API_ENDPOINTS.CONFIG.PUBLIC),
+  getAll: () => apiClient.get(API_ENDPOINTS.ADMIN.SITE_CONFIG),
+  update: (configs) => apiClient.put(API_ENDPOINTS.ADMIN.SITE_CONFIG, { configs }),
+  uploadAsset: (file, assetKey, category, deviceType = 'all') => {
+    const additionalData = { assetKey, category, deviceType };
+    return apiClient.uploadFile(API_ENDPOINTS.ADMIN.SITE_ASSETS, file, additionalData);
+  },
+  deleteAsset: (assetKey) => apiClient.delete(API_ENDPOINTS.ADMIN.SITE_ASSET_DETAIL(assetKey)),
+  createFooterLink: (linkData) => apiClient.post(API_ENDPOINTS.ADMIN.FOOTER_LINKS, linkData),
+  updateFooterLink: (linkId, linkData) => apiClient.put(API_ENDPOINTS.ADMIN.FOOTER_LINK_DETAIL(linkId), linkData),
+  deleteFooterLink: (linkId) => apiClient.delete(API_ENDPOINTS.ADMIN.FOOTER_LINK_DETAIL(linkId)),
+  createAnnouncement: (data) => apiClient.post(API_ENDPOINTS.ADMIN.ANNOUNCEMENTS, data),
+  updateAnnouncement: (id, data) => apiClient.put(API_ENDPOINTS.ADMIN.ANNOUNCEMENT_DETAIL(id), data),
+  deleteAnnouncement: (id) => apiClient.delete(API_ENDPOINTS.ADMIN.ANNOUNCEMENT_DETAIL(id)),
+};
+
+export const emailTemplateAPI = {
+  getAll: () => apiClient.get(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATES),
+  getOne: (templateId) => apiClient.get(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId)),
+  create: (templateData) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATES, templateData),
+  update: (templateId, templateData) => apiClient.put(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId), templateData),
+  delete: (templateId) => apiClient.delete(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId)),
+  test: (templateId, testEmail, testVariables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_TEST(templateId), { testEmail, testVariables }),
+  preview: (templateData, variables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_PREVIEW, { ...templateData, variables }),
+};
+
 
 
 // ==================== 网站配置管理 ====================
@@ -346,21 +311,21 @@ export const updateSiteConfigs = async (configs) => {
 // 上传网站资源文件
 export const uploadSiteAsset = async (file, assetKey, category, deviceType = 'all') => {
   const formData = new FormData();
-  formData.append('file', file);
-  formData.append('assetKey', assetKey);
-  formData.append('category', category);
-  formData.append('deviceType', deviceType);
+  formData。append('file'， file);
+  formData。append('assetKey'， assetKey);
+  formData。append('category'， category);
+  formData。append('deviceType', deviceType);
 
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/assets`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/assets`， {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${getToken()}`,
+      'Authorization': `Bearer ${getToken()}`，
     },
-    body: formData,
+    body: formData，
   });
 
   if (!response.ok) {
-    throw new Error('上传资源失败');
+    throw new 错误('上传资源失败');
   }
 
   return response.json();
@@ -368,15 +333,15 @@ export const uploadSiteAsset = async (file, assetKey, category, deviceType = 'al
 
 // 删除网站资源
 export const deleteSiteAsset = async (assetKey) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/assets/${assetKey}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/assets/${assetKey}`， {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    },
+    }，
   });
 
   if (!response.ok) {
-    throw new Error('删除资源失败');
+    throw new 错误('删除资源失败');
   }
 
   return response.json();
@@ -386,12 +351,12 @@ export const deleteSiteAsset = async (assetKey) => {
 
 // 创建页脚链接
 export const createFooterLink = async (linkData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links`， {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`,
-    },
+      'Authorization': `Bearer ${getToken()}`，
+    }，
     body: JSON.stringify(linkData),
   });
 
@@ -399,7 +364,7 @@ export const createFooterLink = async (linkData) => {
     throw new Error('创建链接失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
 // 更新页脚链接
@@ -407,14 +372,14 @@ export const updateFooterLink = async (linkId, linkData) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`, {
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json'，
       'Authorization': `Bearer ${getToken()}`,
     },
-    body: JSON.stringify(linkData),
+    body: JSON.stringify(linkData)，
   });
 
   if (!response.ok) {
-    throw new Error('更新链接失败');
+    throw new 错误('更新链接失败');
   }
 
   return response.json();
@@ -563,45 +528,45 @@ export const updateEmailTemplate = async (templateId, templateData) => {
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
-    method: 'DELETE',
+    method: 'DELETE'，
     headers: {
       'Authorization': `Bearer ${getToken()}`,
     },
   });
 
   if (!response.ok) {
-    throw new Error('删除邮件模板失败');
+    throw new 错误('删除邮件模板失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
 // 测试邮件模板
-export const testEmailTemplate = async (templateId, testEmail, testVariables) => {
+export const testEmailTemplate = async (templateId， testEmail, testVariables) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`, {
-    method: 'POST',
+    method: 'POST'，
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`,
-    },
-    body: JSON.stringify({ templateId, testEmail, testVariables }),
+      'Content-Type': 'application/json'，
+      'Authorization': `Bearer ${getToken()}`，
+    }，
+    body: JSON。stringify({ templateId, testEmail, testVariables })，
   });
 
   if (!response.ok) {
-    throw new Error('测试邮件发送失败');
+    throw new 错误('测试邮件发送失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
 // 预览邮件模板
 export const previewEmailTemplate = async (templateData, variables) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`， {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`,
-    },
+      'Content-Type': 'application/json'，
+      'Authorization': `Bearer ${getToken()}`，
+    }，
     body: JSON.stringify({ ...templateData, variables }),
   });
 
@@ -609,6 +574,6 @@ export const previewEmailTemplate = async (templateData, variables) => {
     throw new Error('预览邮件模板失败');
   }
 
-  return response.json();
+  return response。json();
 };
 
