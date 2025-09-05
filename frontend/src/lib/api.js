@@ -3,15 +3,43 @@
  * 封装所有与后端API的通信
  */
 
+// 全局API配置
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
+
+// Token管理
+let authToken = null;
+
+export const setToken = (token) => {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('auth_token', token);
+  } else {
+    localStorage.removeItem('auth_token');
+  }
+};
+
+export const getToken = () => {
+  if (!authToken) {
+    authToken = localStorage.getItem('auth_token');
+  }
+  return authToken;
+};
+
+export const clearToken = () => {
+  authToken = null;
+  localStorage.removeItem('auth_token');
+};
+
 class ApiClient {
   constructor() {
-    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
+    this.baseURL = API_BASE_URL;
     this.token = null;
   }
 
   // 设置认证Token
   setToken(token) {
     this.token = token;
+    setToken(token);
   }
 
   // 获取请求头
@@ -20,8 +48,9 @@ class ApiClient {
       'Content-Type': 'application/json',
     };
 
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    const token = this.token || getToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
     return headers;
@@ -45,7 +74,7 @@ class ApiClient {
 
   // GET请求
   async get(endpoint, params = {}) {
-    const url = new URL(`${this.baseURL}${endpoint}`);
+    const url = new URL(`${this.baseURL}/api${endpoint}`);
     
     // 添加查询参数
     Object.keys(params).forEach(key => {
@@ -510,7 +539,7 @@ export const getEmailTemplates = async () => {
 
 // 获取单个邮件模板
 export const getEmailTemplate = async (templateId) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
@@ -526,7 +555,7 @@ export const getEmailTemplate = async (templateId) => {
 
 // 创建邮件模板
 export const createEmailTemplate = async (templateData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -544,7 +573,7 @@ export const createEmailTemplate = async (templateData) => {
 
 // 更新邮件模板
 export const updateEmailTemplate = async (templateId, templateData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -562,7 +591,7 @@ export const updateEmailTemplate = async (templateId, templateData) => {
 
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
@@ -578,7 +607,7 @@ export const deleteEmailTemplate = async (templateId) => {
 
 // 测试邮件模板
 export const testEmailTemplate = async (templateId, testEmail, testVariables) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}/test`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -596,7 +625,7 @@ export const testEmailTemplate = async (templateId, testEmail, testVariables) =>
 
 // 预览邮件模板
 export const previewEmailTemplate = async (templateData, variables) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`, {
+  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/preview`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
