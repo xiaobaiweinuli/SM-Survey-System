@@ -97,12 +97,22 @@ jobs:
         run: |
           mkdir publish
           cp -r frontend/dist/* publish/
+          # 1. 创建后端函数目录
           mkdir -p publish/functions
-          cp -r backend/src/* publish/functions/
-          mv publish/functions/index.js publish/functions/[[path]].js
-          echo '{"version": 1, "include": ["/api/*"], "exclude": []}' > publish/_routes.json
+          # 2. 将所有后端代码复制到一个临时目录
+          mkdir temp_backend
+          cp -r backend/src/* temp_backend/
+          # 3. 将入口文件 index.js 复制并重命名为 api.js，放到 functions 目录
+          #    注意：这里我们只复制入口文件，而不是所有后端代码
+          cp temp_backend/index.js publish/functions/api.js
+          # 4. 关键修正：修改 _routes.json
+          #    将所有 /api/* 的请求路由到 /api 函数（即 api.js）
+          #    注意 "route" 和 "function" 的写法
+          echo '{ "version": 1, "include": ["/api/*"], "exclude": [], "routes": [ { "route": "/api/*", "function": "/api" } ] }' > publish/_routes.json
+    
           echo "--- Assembled Directory Structure ---"
           ls -R publish
+
 
       # ==================================================================
       # 步骤 5: 部署组装好的目录到 Cloudflare Pages
