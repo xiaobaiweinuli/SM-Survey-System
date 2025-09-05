@@ -107,31 +107,31 @@ class ApiClient {
   }
 
   // 文件上传
-  async uploadFile(endpoint， file， additionalData = {}) {
+  async uploadFile(endpoint,file,additionalData = {}) {
     const formData = new FormData();
     formData.append('file', file);
     
     // 添加额外数据
     Object.keys(additionalData)。forEach(key => {
-      formData.append(key， additionalData[key]);
+      formData.append(key,additionalData[key]);
     });
 
     const headers = {};
     if (this.token) {
-      headers.Authorization = `Bearer ${this。token}`;
+      headers.Authorization = `Bearer ${this.token}`;
     }
 
     const response = await fetch(`${this.baseURL}/api${endpoint}`, {
       method: 'POST',
-      headers，
-      body: formData，
+      headers,
+      body: formData,
     });
 
-    return this。handleResponse(response);
+    return this.handleResponse(response);
   }
 
   // Base64文件上传
-  async uploadBase64File(endpoint, base64Data， fileName, mimeType, additionalData = {}) {
+  async uploadBase64File(endpoint, base64Data,fileName， mimeType, additionalData = {}) {
     const data = {
       file_data: base64Data,
       file_name: fileName，
