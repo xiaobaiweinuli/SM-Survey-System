@@ -156,7 +156,7 @@ class ApiClient {
           return this.put(endpoint,data);
         case 'delete':
           return this.delete(endpoint);
-        default:
+        默认:
           throw new Error(`Unsupported method: ${method}`);
       }
     });
@@ -331,7 +331,7 @@ export const getAllSiteConfigs = async () => {
   });
 
   if (!response.ok) {
-    throw new Error('获取配置失败');
+    throw new 错误('获取配置失败');
   }
 
   return response.json();
@@ -426,7 +426,7 @@ export const updateFooterLink = async (linkId,linkData) => {
   });
 
   if (!response.ok) {
-    throw new Error('更新链接失败');
+    throw new 错误('更新链接失败');
   }
 
   return response.json();
@@ -462,7 +462,7 @@ export const createAnnouncement = async (announcementData) => {
   });
 
   if (!response.ok) {
-    throw new Error('创建公告失败');
+    throw new 错误('创建公告失败');
   }
 
   return response.json();
@@ -480,7 +480,7 @@ export const updateAnnouncement = async (announcementId,announcementData) => {
   });
 
   if (!response.ok) {
-    throw new Error('更新公告失败');
+    throw new 错误('更新公告失败');
   }
 
   return response.json();
@@ -514,7 +514,7 @@ export const getEmailTemplates = async () => {
   });
 
   if (!response.ok) {
-    throw new Error('获取邮件模板失败');
+    throw new 错误('获取邮件模板失败');
   }
 
   return response.json();
@@ -541,7 +541,7 @@ export const createEmailTemplate = async (templateData) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`,{
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'，
+      'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`,
     },
     body: JSON.stringify(templateData),
@@ -557,9 +557,9 @@ export const createEmailTemplate = async (templateData) => {
 // 更新邮件模板
 export const updateEmailTemplate = async (templateId,templateData) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`,{
-    method: 'PUT'，
+    method: 'PUT',
     headers: {
-      'Content-Type': 'application/json'，
+      'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`,
     },
     body: JSON.stringify(templateData),
@@ -575,7 +575,7 @@ export const updateEmailTemplate = async (templateId,templateData) => {
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`,{
-    method: 'DELETE'，
+    method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
     },
@@ -589,14 +589,14 @@ export const deleteEmailTemplate = async (templateId) => {
 };
 
 // 测试邮件模板
-export const testEmailTemplate = async (templateId,testEmail，testVariables) => {
+export const testEmailTemplate = async (templateId,testEmail,testVariables) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`,{
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json'，
-      'Authorization': `Bearer ${getToken()}`，
-    }，
-    body: JSON.stringify({ templateId,testEmail，testVariables }),
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({ templateId,testEmail,testVariables }),
   });
 
   if (!response.ok) {
@@ -613,7 +613,7 @@ export const previewEmailTemplate = async (templateData,variables) => {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`,
-    }，
+    },
     body: JSON.stringify({ ...templateData,variables }),
   });
 
