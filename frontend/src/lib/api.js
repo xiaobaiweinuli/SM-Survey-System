@@ -45,7 +45,7 @@ class ApiClient {
 
   // GET请求
   async get(endpoint, params = {}) {
-    const url = new URL(`${this.baseURL}/api${endpoint}`);
+    const url = new URL(`${this.baseURL}${endpoint}`);
     
     // 添加查询参数
     Object.keys(params).forEach(key => {
