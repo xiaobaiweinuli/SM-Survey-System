@@ -1,29 +1,23 @@
 /**
  * API客户端库
  * 封装所有与后端API的通信
- * (最终重构版，统一出口，修复URL拼接问题，无省略)
+ * (最终修复版，统一出口，修复所有语法和URL拼接问题)
  */
 
 class ApiClient {
   constructor() {
-    // 关键改动 1: baseURL 现在总是一个绝对路径或完整的URL。
-    // 在生产环境 (VITE_API_BASE_URL 为 '/'), 它会是 '/'
-    // 在本地开发, 它会是 'http://localhost:8787'
     this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
     this.token = null;
   }
 
-  // 设置认证Token
   setToken(token ) {
     this.token = token;
   }
 
-  // 获取认证Token (辅助方法)
   getToken() {
     return this.token;
   }
 
-  // 获取请求头
   getHeaders() {
     const headers = {
       'Content-Type': 'application/json',
@@ -34,22 +28,16 @@ class ApiClient {
     return headers;
   }
 
-  // 关键改动 2: 创建一个统一的、绝对安全的 URL 构建器
   _buildURL(endpoint) {
-    // 使用 URL 构造函数来安全地拼接，彻底避免斜杠问题。
-    // 浏览器会自动处理，生成完整的、正确的URL。
-    // 例如: new URL('/api/auth/login', '/') -> 'https://your.site/api/auth/login'
-    // 例如: new URL('/api/auth/login', 'http://localhost:8787' ) -> 'http://localhost:8787/api/auth/login'
-    return new URL(`/api${endpoint}`, this.baseURL ).href;
+    return new URL(`/api${endpoint}`, this.baseURL).href;
   }
 
-  // 处理响应
   async handleResponse(response) {
     const contentType = response.headers.get("content-type");
     if (response.status === 204 || !contentType || !contentType.includes("application/json")) {
       if (response.ok) return { success: true, status: response.status };
       const textError = await response.text();
-      throw { status: response。status, message: textError || response.statusText };
+      throw { status: response.status, message: textError || response.statusText };
     }
     
     const data = await response.json();
@@ -59,29 +47,28 @@ class ApiClient {
     return data;
   }
 
-  // 所有请求方法现在都使用 _buildURL
-  async get(endpoint， params = {}) {
+  async get(endpoint, params = {}) {
     const url = new URL(this._buildURL(endpoint));
     Object.keys(params).forEach(key => {
       if (params[key] !== undefined && params[key] !== null) {
-        url。searchParams.append(key, params[key]);
+        url.searchParams.append(key, params[key]);
       }
     });
-    const response = await fetch(url。toString(), { method: 'GET', headers: this.getHeaders() });
-    return this。handleResponse(response);
+    const response = await fetch(url.toString(), { method: 'GET', headers: this.getHeaders() });
+    return this.handleResponse(response);
   }
 
-  async post(endpoint， data = {}) {
-    const response = await fetch(this._buildURL(endpoint)， {
+  async post(endpoint, data = {}) {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'POST',
-      headers: this.getHeaders()，
-      body: JSON。stringify(data),
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
     });
-    return this。handleResponse(response);
+    return this.handleResponse(response);
   }
 
   async put(endpoint, data = {}) {
-    const response = await fetch(this。_buildURL(endpoint), {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
@@ -140,14 +127,8 @@ class ApiClient {
   }
 }
 
-// =================================================================
-// 统一的 API 客户端实例
-// =================================================================
 export const apiClient = new ApiClient();
 
-// =================================================================
-// API 端点常量定义
-// =================================================================
 export const API_ENDPOINTS = {
   AUTH: { REGISTER: '/auth/register', LOGIN: '/auth/login', ADMIN_LOGIN: '/auth/admin/login', REFRESH: '/auth/refresh', LOGOUT: '/auth/logout' },
   USER: { PROFILE: '/user/profile', STATS: '/user/stats' },
@@ -158,10 +139,6 @@ export const API_ENDPOINTS = {
   CONFIG: { PUBLIC: '/config/public' },
   NOTIFICATIONS: { LIST: '/notifications', MARK_READ: (id) => `/notifications/${id}/read` }
 };
-
-// =================================================================
-// 便捷方法导出 (所有方法现在都通过 apiClient)
-// =================================================================
 
 export const authAPI = {
   register: (data) => apiClient.post(API_ENDPOINTS.AUTH.REGISTER, data),
@@ -252,8 +229,6 @@ export const emailTemplateAPI = {
   test: (templateId, testEmail, testVariables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_TEST(templateId), { testEmail, testVariables }),
   preview: (templateData, variables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_PREVIEW, { ...templateData, variables }),
 };
-
-
 
 // ==================== 网站配置管理 ====================
 
