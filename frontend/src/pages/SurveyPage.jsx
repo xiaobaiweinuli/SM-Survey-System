@@ -29,7 +29,7 @@ import { surveyAPI } from '../lib/api';
 
 const SurveyPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  useAuth();
   
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -42,7 +42,7 @@ const SurveyPage = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [validationErrors, setValidationErrors] = useState({});
 
-  const fileInputRefs = useRef({});
+
 
   useEffect(() => {
     fetchSurveyConfig();
@@ -201,6 +201,7 @@ const SurveyPage = () => {
         }
         break;
     }
+  }
 
     return errors;
   };
@@ -247,7 +248,7 @@ const SurveyPage = () => {
       // 这里可以实现保存草稿的逻辑
       setSuccess('草稿已保存');
       setTimeout(() => setSuccess(''), 3000);
-    } catch (error) {
+    } catch {
       setError('保存草稿失败');
     }
   };
@@ -269,7 +270,7 @@ const SurveyPage = () => {
         fileList.push(...fieldFiles);
       });
 
-      const response = await surveyAPI.submit({
+      await surveyAPI.submit({
         survey_config_id: surveyConfig.id,
         data: formData,
         files: fileList
@@ -726,6 +727,4 @@ const FileUploadField = ({ field, files, onFilesChange, disabled, hasError }) =>
     </div>
   );
 };
-
 export default SurveyPage;
-
