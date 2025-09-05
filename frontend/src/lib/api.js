@@ -74,7 +74,7 @@ class ApiClient {
 
   // GET请求
   async get(endpoint, params = {}) {
-    const url = new URL(`${this.baseURL}/api${endpoint}`);
+    const url = new URL(`${this.baseURL}${endpoint}`);
     
     // 添加查询参数
     Object.keys(params).forEach(key => {
@@ -93,7 +93,7 @@ class ApiClient {
 
   // POST请求
   async post(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
@@ -104,7 +104,7 @@ class ApiClient {
 
   // PUT请求
   async put(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
@@ -115,7 +115,7 @@ class ApiClient {
 
   // DELETE请求
   async delete(endpoint) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -138,7 +138,7 @@ class ApiClient {
       headers.Authorization = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
       method: 'POST',
       headers,
       body: formData,
@@ -539,7 +539,7 @@ export const getEmailTemplates = async () => {
 
 // 获取单个邮件模板
 export const getEmailTemplate = async (templateId) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
     method: 'GET',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
@@ -555,7 +555,7 @@ export const getEmailTemplate = async (templateId) => {
 
 // 创建邮件模板
 export const createEmailTemplate = async (templateData) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -573,7 +573,7 @@ export const createEmailTemplate = async (templateData) => {
 
 // 更新邮件模板
 export const updateEmailTemplate = async (templateId, templateData) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -591,7 +591,7 @@ export const updateEmailTemplate = async (templateId, templateData) => {
 
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`, {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
@@ -607,7 +607,7 @@ export const deleteEmailTemplate = async (templateId) => {
 
 // 测试邮件模板
 export const testEmailTemplate = async (templateId, testEmail, testVariables) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/${templateId}/test`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -625,7 +625,7 @@ export const testEmailTemplate = async (templateId, testEmail, testVariables) =>
 
 // 预览邮件模板
 export const previewEmailTemplate = async (templateData, variables) => {
-  const response = await fetch(`${API_BASE_URL}/api/admin/site-config/email-templates/preview`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/preview`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
