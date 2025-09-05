@@ -337,63 +337,62 @@ export class Router {
   }
 }
 
-// ... 你所有的 class Router 定义代码保持不变 ...
+import { Router } from '../../backend/src/index.js'; // 如果你已经在 publish 里合并，就直接写 './router.js'
 
+/**
+ * Pages Functions 风格的入口
+ */
+export async function onRequest(context) {
+  const { request, env } = context;
+  const url = new URL(request.url);
+  const pathname = url.pathname;
+  const method = request.method;
 
-// ==================================================================
-// 关键的入口点 (胶水代码) - 调试版本
-// ==================================================================
-
-export default {
-  async fetch(request, env, context) {
-    const url = new URL(request.url);
-    const pathname = url.pathname;
-    const method = request.method;
-
-    // 1. 添加一个最简单的“探针”路由用于测试
-    if (pathname === '/api/ping') {
-      return new Response(JSON.stringify({
-        message: 'pong',
-        timestamp: new Date().toISOString(),
-        method: method,
-        pathname: pathname
-      }), {
-        headers: { 'Content-Type': 'application/json' },
-        status: 200
-      });
-    }
-
-    // 2. 专门为 admin login 路径进行硬编码调试
-    if (pathname === '/api/auth/admin/login') {
-      // 如果是 POST 请求，返回一个明确的成功信息
-      if (method === 'POST') {
-        return new Response(JSON.stringify({
-          debug_message: 'SUCCESS: Reached /api/auth/admin/login with POST method!',
-          // 模拟一个 token，以便前端可以继续流程
-          token: 'fake-debug-token-12345' 
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-          status: 200 // 强制返回 200 OK
-        });
-      } else {
-        // 如果是其他方法，返回一个自定义的 405 错误
-        return new Response(JSON.stringify({
-          debug_message: `ERROR: Reached /api/auth/admin/login but with wrong method: ${method}`,
-        }), {
-          headers: { 'Content-Type': 'application/json' },
-          status: 405 // 明确返回 405
-        });
-      }
-    }
-
-    // 3. 对于所有其他请求，返回一个通用的调试信息
+  // 1. 最简单的“探针”路由
+  if (pathname === '/api/ping') {
     return new Response(JSON.stringify({
-      debug_message: 'Route not found in debug mode',
-      method: method,
-      pathname: pathname
+      message: 'pong',
+      timestamp: new Date().toISOString(),
+      method,
+      pathname,
     }), {
       headers: { 'Content-Type': 'application/json' },
-      status: 404
+      status: 200,
     });
   }
-};
+
+  // 2. 专门为 admin login 做的调试路由
+  if (pathname === '/api/auth/admin/login') {
+    if (method === 'POST') {
+      return new Response(JSON.stringify({
+        debug_message: 'SUCCESS: Reached /api/auth/admin/login with POST method!',
+        token: 'fake-debug-token-12345',
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    } else {
+      return new Response(JSON.stringify({
+        debug_message: `ERROR: Wrong method: ${method}`,
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 405,
+      });
+    }
+  }
+
+  // 3. 调用 Router 处理业务逻辑
+  try {
+    const router = new Router(env);
+    return await router.handle(request);
+  } catch (err) {
+    console.error('Router error:', err);
+    return new Response(JSON.stringify({
+      error: 'Internal Server Error',
+      details: err.message,
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 500,
+    });
+  }
+}
