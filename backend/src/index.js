@@ -337,35 +337,63 @@ export class Router {
   }
 }
 
+// ... 你所有的 class Router 定义代码保持不变 ...
+
+
 // ==================================================================
-// 关键的入口点 (胶水代码)
+// 关键的入口点 (胶水代码) - 调试版本
 // ==================================================================
 
-// 导出一个符合 Cloudflare Worker 规范的对象
 export default {
-  /**
-   * @param {Request} request
-   * @param {object} env - Cloudflare 环境变量和绑定
-   * @param {object} context - 执行上下文
-   */
   async fetch(request, env, context) {
-    // 为每个请求创建一个新的路由器实例，并传入 env
-    const router = new Router(env);
-    
-    try {
-      // 使用你的路由器的 handle 方法来处理请求
-      return await router.handle(request);
-    } catch (error) {
-      // 这是一个全局的、最终的错误捕获器
-      console.error('Unhandled error in fetch:', error);
-      
-      // 如果错误是自定义的 Response 对象（例如来自中间件），直接返回
-      if (error instanceof Response) {
-        return error;
-      }
-      
-      // 否则，返回一个标准的 500 内部服务器错误
-      return createErrorResponse(ERROR_CODES.INTERNAL_SERVER_ERROR, 'An unexpected error occurred.', 500);
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+    const method = request.method;
+
+    // 1. 添加一个最简单的“探针”路由用于测试
+    if (pathname === '/api/ping') {
+      return new Response(JSON.stringify({
+        message: 'pong',
+        timestamp: new Date().toISOString(),
+        method: method,
+        pathname: pathname
+      }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200
+      });
     }
+
+    // 2. 专门为 admin login 路径进行硬编码调试
+    if (pathname === '/api/auth/admin/login') {
+      // 如果是 POST 请求，返回一个明确的成功信息
+      if (method === 'POST') {
+        return new Response(JSON.stringify({
+          debug_message: 'SUCCESS: Reached /api/auth/admin/login with POST method!',
+          // 模拟一个 token，以便前端可以继续流程
+          token: 'fake-debug-token-12345' 
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 200 // 强制返回 200 OK
+        });
+      } else {
+        // 如果是其他方法，返回一个自定义的 405 错误
+        return new Response(JSON.stringify({
+          debug_message: `ERROR: Reached /api/auth/admin/login but with wrong method: ${method}`,
+        }), {
+          headers: { 'Content-Type': 'application/json' },
+          status: 405 // 明确返回 405
+        });
+      }
+    }
+
+    // 3. 对于所有其他请求，返回一个通用的调试信息
+    return new Response(JSON.stringify({
+      debug_message: 'Route not found in debug mode',
+      method: method,
+      pathname: pathname
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 404
+    });
   }
 };
