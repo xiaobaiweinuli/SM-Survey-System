@@ -160,21 +160,23 @@ const SurveyPage = () => {
     const errors = [];
 
     switch (field.type) {
-      case 'email':
+      case 'email': {
         const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailPattern.test(value)) {
           errors.push('邮箱格式不正确');
         }
         break;
+      }
 
-      case 'phone':
+      case 'phone': {
         const phonePattern = /^1[3-9]\d{9}$/;
         if (!phonePattern.test(value)) {
           errors.push('手机号格式不正确');
         }
         break;
+      }
 
-      case 'number':
+      case 'number': {
         const numValue = Number(value);
         if (isNaN(numValue)) {
           errors.push('必须为数字');
@@ -187,9 +189,10 @@ const SurveyPage = () => {
           }
         }
         break;
+      }
 
       case 'text':
-      case 'textarea':
+      case 'textarea': {
         if (field.minLength && value.length < field.minLength) {
           errors.push(`长度不能少于${field.minLength}个字符`);
         }
