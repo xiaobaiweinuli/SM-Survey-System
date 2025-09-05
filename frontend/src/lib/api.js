@@ -286,10 +286,10 @@ export const updateSiteConfigs = async (configs) => {
 // 上传网站资源文件
 export const uploadSiteAsset = async (file, assetKey, category, deviceType = 'all') => {
   const formData = new FormData();
-  formData。append('file'， file);
-  formData。append('assetKey'， assetKey);
-  formData。append('category'， category);
-  formData。append('deviceType', deviceType);
+  formData.append('file'， file);
+  formData.append('assetKey'， assetKey);
+  formData.append('category'， category);
+  formData.append('deviceType', deviceType);
 
   const response = await fetch(`${API_BASE_URL}/admin/site-config/assets`， {
     method: 'POST',
@@ -332,24 +332,24 @@ export const createFooterLink = async (linkData) => {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`，
     }，
-    body: JSON.stringify(linkData),
+    body: JSON.stringify(linkData)，
   });
 
   if (!response.ok) {
-    throw new Error('创建链接失败');
+    throw new 错误('创建链接失败');
   }
 
-  return response。json();
+  return response.json();
 };
 
 // 更新页脚链接
 export const updateFooterLink = async (linkId, linkData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`， {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json'，
-      'Authorization': `Bearer ${getToken()}`,
-    },
+      'Authorization': `Bearer ${getToken()}`，
+    }，
     body: JSON.stringify(linkData)，
   });
 
@@ -362,15 +362,15 @@ export const updateFooterLink = async (linkId, linkData) => {
 
 // 删除页脚链接
 export const deleteFooterLink = async (linkId) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`， {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    },
+    }，
   });
 
   if (!response.ok) {
-    throw new Error('删除链接失败');
+    throw new 错误('删除链接失败');
   }
 
   return response.json();
@@ -380,7 +380,7 @@ export const deleteFooterLink = async (linkId) => {
 
 // 创建公告
 export const createAnnouncement = async (announcementData) => {
-  const response = await fetch(`${API_BASE_URL}/admin/site-config/announcements`, {
+  const response = await fetch(`${API_BASE_URL}/admin/site-config/announcements`， {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -513,7 +513,7 @@ export const deleteEmailTemplate = async (templateId) => {
     throw new 错误('删除邮件模板失败');
   }
 
-  return response。json();
+  return response.json();
 };
 
 // 测试邮件模板
@@ -524,14 +524,14 @@ export const testEmailTemplate = async (templateId， testEmail, testVariables) 
       'Content-Type': 'application/json'，
       'Authorization': `Bearer ${getToken()}`，
     }，
-    body: JSON。stringify({ templateId, testEmail, testVariables })，
+    body: JSON.stringify({ templateId, testEmail, testVariables })，
   });
 
   if (!response.ok) {
     throw new 错误('测试邮件发送失败');
   }
 
-  return response。json();
+  return response.json();
 };
 
 // 预览邮件模板
@@ -549,6 +549,6 @@ export const previewEmailTemplate = async (templateData, variables) => {
     throw new Error('预览邮件模板失败');
   }
 
-  return response。json();
+  return response.json();
 };
 
