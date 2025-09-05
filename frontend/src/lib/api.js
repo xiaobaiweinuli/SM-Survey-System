@@ -294,9 +294,9 @@ export const uploadSiteAsset = async (file,assetKey,category,deviceType = 'all')
   const response = await fetch(`${API_BASE_URL}/admin/site-config/assets`,{
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${getToken()}`，
+      'Authorization': `Bearer ${getToken()}`,
     },
-    body: formData，
+    body: formData,
   });
 
   if (!response.ok) {
@@ -312,7 +312,7 @@ export const deleteSiteAsset = async (assetKey) => {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    }，
+    },
   });
 
   if (!response.ok) {
@@ -331,8 +331,8 @@ export const createFooterLink = async (linkData) => {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${getToken()}`，
-    }，
-    body: JSON.stringify(linkData)，
+    },
+    body: JSON.stringify(linkData),
   });
 
   if (!response.ok) {
@@ -347,10 +347,10 @@ export const updateFooterLink = async (linkId,linkData) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/footer-links/${linkId}`,{
     method: 'PUT',
     headers: {
-      'Content-Type': 'application/json'，
-      'Authorization': `Bearer ${getToken()}`，
-    }，
-    body: JSON.stringify(linkData)，
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify(linkData),
   });
 
   if (!response.ok) {
@@ -366,7 +366,7 @@ export const deleteFooterLink = async (linkId) => {
     method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
-    }，
+    },
   });
 
   if (!response.ok) {
@@ -503,7 +503,7 @@ export const updateEmailTemplate = async (templateId,templateData) => {
 // 删除邮件模板
 export const deleteEmailTemplate = async (templateId) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}`,{
-    method: 'DELETE'，
+    method: 'DELETE',
     headers: {
       'Authorization': `Bearer ${getToken()}`,
     },
@@ -519,12 +519,12 @@ export const deleteEmailTemplate = async (templateId) => {
 // 测试邮件模板
 export const testEmailTemplate = async (templateId,testEmail,testVariables) => {
   const response = await fetch(`${API_BASE_URL}/admin/site-config/email-templates/${templateId}/test`,{
-    method: 'POST'，
+    method: 'POST',
     headers: {
-      'Content-Type': 'application/json'，
-      'Authorization': `Bearer ${getToken()}`，
-    }，
-    body: JSON.stringify({ templateId,testEmail,testVariables })，
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify({ templateId,testEmail,testVariables }),
   });
 
   if (!response.ok) {
