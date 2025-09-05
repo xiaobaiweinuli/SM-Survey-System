@@ -1,136 +1,107 @@
 /**
  * API客户端库
  * 封装所有与后端API的通信
+ * (最终修复版，统一出口，修复所有语法和URL拼接问题)
  */
-
-// API基础URL配置
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
-
-// 创建API客户端实例
-let tokenStorage = null;
-
-// 获取Token函数
-export const getToken = () => {
-  return tokenStorage || localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
-};
 
 class ApiClient {
   constructor() {
-    this.baseURL = API_BASE_URL;
+    this.baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8787';
     this.token = null;
   }
 
-  // 设置认证Token
-  setToken(token) {
+  setToken(token ) {
     this.token = token;
-    tokenStorage = token;
   }
 
-  // 获取请求头
+  getToken() {
+    return this.token;
+  }
+
   getHeaders() {
     const headers = {
       'Content-Type': 'application/json',
     };
-
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (this.getToken()) {
+      headers.Authorization = `Bearer ${this.getToken()}`;
     }
-
     return headers;
   }
 
-  // 处理响应
+  _buildURL(endpoint) {
+    return new URL(`/api${endpoint}`, this.baseURL).href;
+  }
+
   async handleResponse(response) {
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw {
-        status: response.status,
-        response: {
-          data: data
-        }
-      };
+    const contentType = response.headers.get("content-type");
+    if (response.status === 204 || !contentType || !contentType.includes("application/json")) {
+      if (response.ok) return { success: true, status: response.status };
+      const textError = await response.text();
+      throw { status: response.status, message: textError || response.statusText };
     }
-
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw { status: response.status, response: { data: data } };
+    }
     return data;
   }
 
-  // GET请求
   async get(endpoint, params = {}) {
-    const url = new URL(`${this.baseURL}/api${endpoint}`);
-    
-    // 添加查询参数
+    const url = new URL(this._buildURL(endpoint));
     Object.keys(params).forEach(key => {
       if (params[key] !== undefined && params[key] !== null) {
         url.searchParams.append(key, params[key]);
       }
     });
-
-    const response = await fetch(url.toString(), {
-      method: 'GET',
-      headers: this.getHeaders(),
-    });
-
+    const response = await fetch(url.toString(), { method: 'GET', headers: this.getHeaders() });
     return this.handleResponse(response);
   }
 
-  // POST请求
   async post(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-
     return this.handleResponse(response);
   }
 
-  // PUT请求
   async put(endpoint, data = {}) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-
     return this.handleResponse(response);
   }
 
-  // DELETE请求
   async delete(endpoint) {
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-
     return this.handleResponse(response);
   }
 
-  // 文件上传
   async uploadFile(endpoint, file, additionalData = {}) {
     const formData = new FormData();
     formData.append('file', file);
+    Object.keys(additionalData).forEach(key => formData.append(key, additionalData[key]));
     
-    // 添加额外数据
-    Object.keys(additionalData).forEach(key => {
-      formData.append(key, additionalData[key]);
-    });
-
     const headers = {};
-    if (this.token) {
-      headers.Authorization = `Bearer ${this.token}`;
+    if (this.getToken()) {
+      headers.Authorization = `Bearer ${this.getToken()}`;
     }
 
-    const response = await fetch(`${this.baseURL}/api${endpoint}`, {
+    const response = await fetch(this._buildURL(endpoint), {
       method: 'POST',
       headers,
       body: formData,
     });
-
     return this.handleResponse(response);
   }
 
-  // Base64文件上传
   async uploadBase64File(endpoint, base64Data, fileName, mimeType, additionalData = {}) {
     const data = {
       file_data: base64Data,
@@ -138,106 +109,37 @@ class ApiClient {
       mime_type: mimeType,
       ...additionalData
     };
-
     return this.post(endpoint, data);
   }
 
-  // 批量请求
   async batch(requests) {
     const promises = requests.map(request => {
       const { method, endpoint, data, params } = request;
-      
       switch (method.toLowerCase()) {
-        case 'get':
-          return this.get(endpoint, params);
-        case 'post':
-          return this.post(endpoint, data);
-        case 'put':
-          return this.put(endpoint, data);
-        case 'delete':
-          return this.delete(endpoint);
-        default:
-          throw new Error(`Unsupported method: ${method}`);
+        case 'get': return this.get(endpoint, params);
+        case 'post': return this.post(endpoint, data);
+        case 'put': return this.put(endpoint, data);
+        case 'delete': return this.delete(endpoint);
+        default: throw new Error(`Unsupported method: ${method}`);
       }
     });
-
     return Promise.allSettled(promises);
   }
 }
 
-// 创建API客户端实例
 export const apiClient = new ApiClient();
 
-// API端点常量
 export const API_ENDPOINTS = {
-  // 认证相关
-  AUTH: {
-    REGISTER: '/auth/register',
-    LOGIN: '/auth/login',
-    ADMIN_LOGIN: '/auth/admin/login',
-    REFRESH: '/auth/refresh',
-    LOGOUT: '/auth/logout'
-  },
-
-  // 用户相关
-  USER: {
-    PROFILE: '/user/profile',
-    STATS: '/user/stats'
-  },
-
-  // 问卷相关
-  SURVEY: {
-    CONFIG: '/survey/config',
-    SUBMIT: '/survey/submit',
-    SUBMISSIONS: '/survey/submissions'
-  },
-
-  // 任务相关
-  TASKS: {
-    LIST: '/tasks',
-    DETAIL: (id) => `/tasks/${id}`,
-    CLAIM: (id) => `/tasks/${id}/claim`,
-    SUBMIT: (id) => `/tasks/${id}/submit`,
-    SUBMISSIONS: '/tasks/submissions'
-  },
-
-  // 文件相关
-  FILES: {
-    UPLOAD: '/files/upload',
-    DETAIL: (id) => `/files/${id}`,
-    DELETE: (id) => `/files/${id}`
-  },
-
-  // 管理后台
-  ADMIN: {
-    USERS: '/admin/users',
-    USER_DETAIL: (id) => `/admin/users/${id}`,
-    USER_STATUS: (id) => `/admin/users/${id}/status`,
-    SURVEYS: '/admin/surveys',
-    SURVEY_DETAIL: (id) => `/admin/surveys/${id}`,
-    SURVEY_STATS: (id) => `/admin/surveys/${id}/stats`,
-    TASKS: '/admin/tasks',
-    TASK_DETAIL: (id) => `/admin/tasks/${id}`,
-    TASK_STATS: (id) => `/admin/tasks/${id}/stats`,
-    EXPORT_USERS: '/admin/export/users',
-    EXPORT_SURVEYS: '/admin/export/surveys',
-    EXPORT_TASKS: '/admin/export/tasks'
-  },
-
-  // 系统配置
-  CONFIG: {
-    PUBLIC: '/config/public',
-    UPDATE: '/admin/config'
-  },
-
-  // 通知相关
-  NOTIFICATIONS: {
-    LIST: '/notifications',
-    MARK_READ: (id) => `/notifications/${id}/read`
-  }
+  AUTH: { REGISTER: '/auth/register', LOGIN: '/auth/login', ADMIN_LOGIN: '/auth/admin/login', REFRESH: '/auth/refresh', LOGOUT: '/auth/logout' },
+  USER: { PROFILE: '/user/profile', STATS: '/user/stats' },
+  SURVEY: { CONFIG: '/survey/config', SUBMIT: '/survey/submit', SUBMISSIONS: '/survey/submissions' },
+  TASKS: { LIST: '/tasks', DETAIL: (id) => `/tasks/${id}`, CLAIM: (id) => `/tasks/${id}/claim`, SUBMIT: (id) => `/tasks/${id}/submit`, SUBMISSIONS: '/tasks/submissions' },
+  FILES: { UPLOAD: '/files/upload', DETAIL: (id) => `/files/${id}`, DELETE: (id) => `/files/${id}` },
+  ADMIN: { USERS: '/admin/users', USER_DETAIL: (id) => `/admin/users/${id}`, USER_STATUS: (id) => `/admin/users/${id}/status`, SURVEYS: '/admin/surveys', SURVEY_DETAIL: (id) => `/admin/surveys/${id}`, SURVEY_STATS: (id) => `/admin/surveys/${id}/stats`, TASKS: '/admin/tasks', TASK_DETAIL: (id) => `/admin/tasks/${id}`, TASK_STATS: (id) => `/admin/tasks/${id}/stats`, EXPORT_USERS: '/admin/export/users', EXPORT_SURVEYS: '/admin/export/surveys', EXPORT_TASKS: '/admin/export/tasks', SITE_CONFIG: '/admin/site-config', FOOTER_LINKS: '/admin/site-config/footer-links', FOOTER_LINK_DETAIL: (id) => `/admin/site-config/footer-links/${id}`, ANNOUNCEMENTS: '/admin/site-config/announcements', ANNOUNCEMENT_DETAIL: (id) => `/admin/site-config/announcements/${id}`, EMAIL_TEMPLATES: '/admin/site-config/email-templates', EMAIL_TEMPLATE_DETAIL: (id) => `/admin/site-config/email-templates/${id}`, EMAIL_TEMPLATE_TEST: (id) => `/admin/site-config/email-templates/${id}/test`, EMAIL_TEMPLATE_PREVIEW: '/admin/site-config/email-templates/preview', SITE_ASSETS: '/admin/site-config/assets', SITE_ASSET_DETAIL: (key) => `/admin/site-config/assets/${key}` },
+  CONFIG: { PUBLIC: '/config/public' },
+  NOTIFICATIONS: { LIST: '/notifications', MARK_READ: (id) => `/notifications/${id}/read` }
 };
 
-// 便捷方法
 export const authAPI = {
   register: (data) => apiClient.post(API_ENDPOINTS.AUTH.REGISTER, data),
   login: (data) => apiClient.post(API_ENDPOINTS.AUTH.LOGIN, data),
@@ -293,12 +195,39 @@ export const adminAPI = {
 
 export const configAPI = {
   getPublicConfig: () => apiClient.get(API_ENDPOINTS.CONFIG.PUBLIC),
-  updateConfig: (data) => apiClient.put(API_ENDPOINTS.CONFIG.UPDATE, data)
+  updateConfig: (data) => apiClient.put(API_ENDPOINTS.ADMIN.SITE_CONFIG, data)
 };
 
 export const notificationsAPI = {
   getNotifications: (params) => apiClient.get(API_ENDPOINTS.NOTIFICATIONS.LIST, params),
   markAsRead: (id) => apiClient.put(API_ENDPOINTS.NOTIFICATIONS.MARK_READ(id))
+};
+
+export const siteConfigAPI = {
+  getPublic: () => apiClient.get(API_ENDPOINTS.CONFIG.PUBLIC),
+  getAll: () => apiClient.get(API_ENDPOINTS.ADMIN.SITE_CONFIG),
+  update: (configs) => apiClient.put(API_ENDPOINTS.ADMIN.SITE_CONFIG, { configs }),
+  uploadAsset: (file, assetKey, category, deviceType = 'all') => {
+    const additionalData = { assetKey, category, deviceType };
+    return apiClient.uploadFile(API_ENDPOINTS.ADMIN.SITE_ASSETS, file, additionalData);
+  },
+  deleteAsset: (assetKey) => apiClient.delete(API_ENDPOINTS.ADMIN.SITE_ASSET_DETAIL(assetKey)),
+  createFooterLink: (linkData) => apiClient.post(API_ENDPOINTS.ADMIN.FOOTER_LINKS, linkData),
+  updateFooterLink: (linkId, linkData) => apiClient.put(API_ENDPOINTS.ADMIN.FOOTER_LINK_DETAIL(linkId), linkData),
+  deleteFooterLink: (linkId) => apiClient.delete(API_ENDPOINTS.ADMIN.FOOTER_LINK_DETAIL(linkId)),
+  createAnnouncement: (data) => apiClient.post(API_ENDPOINTS.ADMIN.ANNOUNCEMENTS, data),
+  updateAnnouncement: (id, data) => apiClient.put(API_ENDPOINTS.ADMIN.ANNOUNCEMENT_DETAIL(id), data),
+  deleteAnnouncement: (id) => apiClient.delete(API_ENDPOINTS.ADMIN.ANNOUNCEMENT_DETAIL(id)),
+};
+
+export const emailTemplateAPI = {
+  getAll: () => apiClient.get(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATES),
+  getOne: (templateId) => apiClient.get(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId)),
+  create: (templateData) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATES, templateData),
+  update: (templateId, templateData) => apiClient.put(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId), templateData),
+  delete: (templateId) => apiClient.delete(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_DETAIL(templateId)),
+  test: (templateId, testEmail, testVariables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_TEST(templateId), { testEmail, testVariables }),
+  preview: (templateData, variables) => apiClient.post(API_ENDPOINTS.ADMIN.EMAIL_TEMPLATE_PREVIEW, { ...templateData, variables }),
 };
 
 
