@@ -97,9 +97,9 @@ jobs:
         run: |
           mkdir publish
           cp -r frontend/dist/* publish/
-          mkdir -p publish/functions
-          cp -r backend/src/* publish/functions/
-          mv publish/functions/index.js publish/functions/[[path]].js
+          mkdir -p publish/functions/api
+          cp -r backend/src/* publish/functions/api/
+          mv publish/functions/index.js publish/functions/[[...path]].js
           echo '{"version": 1, "include": ["/api/*"], "exclude": []}' > publish/functions/_routes.json
           echo "--- Assembled Directory Structure ---"
           ls -R publish
